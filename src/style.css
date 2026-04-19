@@ -1,5 +1,6 @@
 /* =========================================================
    PSI Gate — Global Styles
+   Mobile-first, accessible, WCAG 2.1 AA compliant
    ========================================================= */
 :root {
   --alice: #00d4ff;
@@ -7,7 +8,7 @@
   --blinded: #ffd700;
   --double-blinded: #9d4edd;
   --match: #00ff88;
-  --no-match: #555;
+  --no-match: #6b6b8a;
   --private: #ff3366;
   --warning: #ffaa00;
 
@@ -16,9 +17,12 @@
   --surface2: #1a1a2e;
   --border: #2d2d44;
   --text: #e0e0ff;
-  --text-muted: #8888aa;
+  --text-muted: #9999bb;
   --radius: 8px;
   --mono: 'Fira Code', 'Cascadia Code', 'JetBrains Mono', ui-monospace, monospace;
+
+  /* Focus ring — visible on both themes */
+  --focus: #00d4ff;
 }
 
 [data-theme='light'] {
@@ -28,9 +32,11 @@
   --border: #c8c8dd;
   --text: #1a1a2e;
   --text-muted: #5555aa;
+  --no-match: #888899;
 }
 
-* {
+/* ── Reset & base ── */
+*, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
@@ -39,32 +45,63 @@
 html {
   font-size: 16px;
   scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: system-ui, sans-serif;
+  font-family: system-ui, -apple-system, sans-serif;
   line-height: 1.6;
   min-height: 100vh;
+  /* Prevent horizontal overflow on mobile */
+  overflow-x: hidden;
+}
+
+/* Visible focus ring for all interactive elements */
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* ── Skip link ── */
+.skip-link {
+  position: absolute;
+  top: -3rem;
+  left: 1rem;
+  padding: 0.5rem 1rem;
+  background: var(--alice);
+  color: var(--bg);
+  border-radius: 0 0 var(--radius) var(--radius);
+  font-weight: 600;
+  font-size: 0.9rem;
+  z-index: 9999;
+  text-decoration: none;
+  transition: top 0.15s;
+}
+
+.skip-link:focus {
+  top: 0;
 }
 
 /* ── Layout ── */
 #app {
   max-width: 960px;
   margin: 0 auto;
-  padding: 1.5rem 1rem;
+  padding: 1rem;
 }
 
+/* ── Header ── */
 header {
   text-align: center;
-  padding: 2.5rem 1rem 1.5rem;
+  padding: 2rem 1rem 1.25rem;
   border-bottom: 1px solid var(--border);
-  margin-bottom: 2rem;
+  margin-bottom: 1.5rem;
 }
 
 header h1 {
-  font-size: 2rem;
+  font-size: clamp(1.5rem, 5vw, 2rem);
   letter-spacing: -0.5px;
   color: var(--alice);
 }
@@ -73,46 +110,58 @@ header p {
   color: var(--text-muted);
   max-width: 600px;
   margin: 0.5rem auto 0;
+  font-size: clamp(0.85rem, 2.5vw, 1rem);
 }
 
 /* ── Tabs ── */
-.tabs {
+[role="tablist"] {
   display: flex;
-  gap: 0.25rem;
-  flex-wrap: wrap;
+  gap: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   border-bottom: 2px solid var(--border);
-  margin-bottom: 2rem;
+  margin-bottom: 1.5rem;
+  /* Hide scrollbar while keeping scroll */
+  scrollbar-width: none;
 }
 
-.tab-btn {
-  padding: 0.5rem 1rem;
+[role="tablist"]::-webkit-scrollbar {
+  display: none;
+}
+
+[role="tab"] {
+  flex-shrink: 0;
+  padding: 0.6rem 0.9rem;
   border: none;
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: clamp(0.78rem, 2vw, 0.9rem);
   border-bottom: 2px solid transparent;
   margin-bottom: -2px;
   transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+  /* min touch target */
+  min-height: 44px;
 }
 
-.tab-btn:hover {
+[role="tab"]:hover {
   color: var(--text);
 }
 
-.tab-btn.active {
+[role="tab"][aria-selected="true"] {
   color: var(--alice);
   border-bottom-color: var(--alice);
   font-weight: 600;
 }
 
-/* ── Exhibit panel ── */
-.exhibit {
+/* ── Exhibit panels ── */
+[role="tabpanel"] {
   display: none;
-  animation: fadeIn 0.25s ease;
+  animation: fadeIn 0.2s ease;
 }
 
-.exhibit.active {
+[role="tabpanel"].active {
   display: block;
 }
 
@@ -122,23 +171,23 @@ header p {
 }
 
 h2 {
-  font-size: 1.3rem;
+  font-size: clamp(1.1rem, 4vw, 1.3rem);
   margin-bottom: 0.75rem;
   color: var(--text);
 }
 
 h3 {
-  font-size: 1rem;
   margin: 1.25rem 0 0.5rem;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.8px;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
 }
 
 p {
   margin-bottom: 0.75rem;
   color: var(--text-muted);
+  font-size: clamp(0.85rem, 2.5vw, 1rem);
 }
 
 /* ── Cards ── */
@@ -156,22 +205,22 @@ p {
   gap: 1rem;
 }
 
-@media (max-width: 600px) {
+@media (max-width: 540px) {
   .card-row { grid-template-columns: 1fr; }
 }
 
-/* ── Sets display ── */
+/* ── Set labels ── */
 .set-label {
   font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 1px;
   margin-bottom: 0.5rem;
 }
-
 .set-label.alice { color: var(--alice); }
 .set-label.bob   { color: var(--bob); }
 
+/* ── Element lists ── */
 .element-list {
   list-style: none;
   display: flex;
@@ -181,12 +230,13 @@ p {
 
 .element-list li {
   font-family: var(--mono);
-  font-size: 0.82rem;
+  font-size: clamp(0.72rem, 2vw, 0.82rem);
   padding: 0.25rem 0.5rem;
   border-radius: 4px;
   background: var(--surface2);
   border: 1px solid var(--border);
   transition: background 0.3s, border-color 0.3s, box-shadow 0.3s;
+  word-break: break-all;
 }
 
 .element-list li.match {
@@ -195,40 +245,35 @@ p {
   box-shadow: 0 0 8px color-mix(in srgb, var(--match) 30%, transparent);
 }
 
-.element-list li.no-match {
-  color: var(--no-match);
-}
-
-.element-list li.blinded {
-  color: var(--blinded);
-  border-color: color-mix(in srgb, var(--blinded) 40%, var(--border));
-}
-
-.element-list li.double-blinded {
-  color: var(--double-blinded);
-  border-color: color-mix(in srgb, var(--double-blinded) 40%, var(--border));
-}
+.element-list li.no-match { color: var(--no-match); }
+.element-list li.blinded  { color: var(--blinded); border-color: color-mix(in srgb, var(--blinded) 40%, var(--border)); }
+.element-list li.double-blinded { color: var(--double-blinded); border-color: color-mix(in srgb, var(--double-blinded) 40%, var(--border)); }
 
 /* ── Buttons ── */
 .btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.4rem;
-  padding: 0.5rem 1.1rem;
+  padding: 0.55rem 1.1rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface2);
   color: var(--text);
   cursor: pointer;
-  font-size: 0.875rem;
+  font-size: clamp(0.82rem, 2vw, 0.875rem);
   transition: background 0.15s, border-color 0.15s;
+  /* Minimum touch target */
+  min-height: 44px;
+  min-width: 44px;
 }
 
-.btn:hover { background: var(--surface); border-color: var(--alice); }
+.btn:hover:not(:disabled) { background: var(--surface); border-color: var(--alice); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn.primary { background: var(--alice); color: var(--bg); border-color: var(--alice); font-weight: 600; }
-.btn.primary:hover { filter: brightness(1.1); }
-.btn.danger { background: var(--private); color: #fff; border-color: var(--private); }
+.btn.primary:hover:not(:disabled) { filter: brightness(1.1); }
+.btn.danger  { background: var(--private); color: #fff; border-color: var(--private); }
+.btn.danger:hover:not(:disabled) { filter: brightness(1.1); }
 
 /* ── Textareas ── */
 textarea {
@@ -238,22 +283,20 @@ textarea {
   border-radius: var(--radius);
   color: var(--text);
   font-family: var(--mono);
-  font-size: 0.82rem;
+  font-size: clamp(0.72rem, 2vw, 0.82rem);
   padding: 0.75rem;
   resize: vertical;
-  min-height: 8rem;
+  min-height: 7rem;
 }
 
 textarea:focus {
-  outline: none;
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
   border-color: var(--alice);
 }
 
-/* ── Code / monospace ── */
-code, .mono {
-  font-family: var(--mono);
-  font-size: 0.82rem;
-}
+/* ── Code ── */
+code, .mono { font-family: var(--mono); font-size: 0.82rem; }
 
 pre {
   background: var(--surface2);
@@ -262,10 +305,10 @@ pre {
   padding: 1rem;
   overflow-x: auto;
   font-family: var(--mono);
-  font-size: 0.8rem;
+  font-size: clamp(0.68rem, 1.8vw, 0.8rem);
   line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-all;
+  white-space: pre;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* ── Protocol step ── */
@@ -275,11 +318,13 @@ pre {
   border-radius: var(--radius);
   padding: 1.25rem;
   margin-bottom: 1rem;
-  min-height: 200px;
+  min-height: 180px;
 }
 
 .step-counter {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 1.8rem;
   height: 1.8rem;
   border-radius: 50%;
@@ -287,51 +332,61 @@ pre {
   color: var(--bg);
   font-weight: 700;
   font-size: 0.85rem;
-  text-align: center;
-  line-height: 1.8rem;
   margin-right: 0.5rem;
+  flex-shrink: 0;
 }
 
 .step-nav {
   display: flex;
-  gap: 0.5rem;
-  margin-top: 1rem;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
 }
 
 /* ── Status messages ── */
 .status {
-  font-family: var(--mono);
-  font-size: 0.82rem;
+  font-size: clamp(0.78rem, 2vw, 0.82rem);
   padding: 0.5rem 0.75rem;
   border-radius: var(--radius);
   margin-top: 0.25rem;
 }
 
-.status.ok     { color: var(--match); }
-.status.warn   { color: var(--warning); }
-.status.error  { color: var(--private); }
-.status.info   { color: var(--alice); }
+.status.ok    { color: var(--match); }
+.status.warn  { color: var(--warning); }
+.status.error { color: var(--private); }
+.status.info  { color: var(--alice); }
 
-/* ── Private scalar redaction ── */
-.scalar-censor {
+/* ── Scalar censor (button) ── */
+.scalar-btn {
   display: inline-block;
   background: var(--private);
   color: var(--private);
   user-select: none;
   border-radius: 3px;
   font-family: var(--mono);
-  font-size: 0.78rem;
-  padding: 0 0.3rem;
+  font-size: 0.75rem;
+  padding: 0.1rem 0.4rem;
   cursor: pointer;
   letter-spacing: 1px;
+  border: none;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: break-all;
+  transition: background 0.2s, color 0.2s;
 }
 
-.scalar-censor.revealed {
+.scalar-btn.revealed {
   background: color-mix(in srgb, var(--private) 15%, var(--surface2));
   color: var(--private);
 }
 
-/* ── Results panel ── */
+.scalar-btn:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* ── Results ── */
 .result-box {
   background: var(--surface2);
   border: 1px solid var(--border);
@@ -340,31 +395,45 @@ pre {
   margin-top: 1rem;
 }
 
-.result-box .intersection-item {
+.intersection-item {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   font-family: var(--mono);
-  font-size: 0.85rem;
+  font-size: clamp(0.78rem, 2vw, 0.85rem);
   color: var(--match);
   padding: 0.2rem 0;
+  word-break: break-all;
 }
 
-.result-box .intersection-item::before {
+.intersection-item::before {
   content: '✓';
   font-weight: 700;
+  flex-shrink: 0;
 }
 
-/* ── Info table ── */
+/* ── Info grid — stacks on mobile ── */
 .info-grid {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 0.25rem 0.75rem;
-  font-size: 0.85rem;
+  gap: 0.3rem 0.75rem;
+  font-size: clamp(0.78rem, 2vw, 0.85rem);
+  align-items: baseline;
 }
 
-.info-label { color: var(--text-muted); }
-.info-value { color: var(--text); font-family: var(--mono); }
+@media (max-width: 400px) {
+  .info-grid {
+    grid-template-columns: 1fr;
+    gap: 0.1rem;
+  }
+  .info-label {
+    margin-top: 0.4rem;
+    font-size: 0.72rem;
+  }
+}
+
+.info-label  { color: var(--text-muted); }
+.info-value  { color: var(--text); font-family: var(--mono); word-break: break-all; }
 .info-value.alice   { color: var(--alice); }
 .info-value.bob     { color: var(--bob); }
 .info-value.private { color: var(--private); }
@@ -378,15 +447,12 @@ pre {
   border-radius: var(--radius);
   padding: 0.85rem 1rem;
   color: var(--warning);
-  font-size: 0.875rem;
+  font-size: clamp(0.78rem, 2vw, 0.875rem);
   margin-top: 0.75rem;
 }
 
-/* ── Real-world deployments ── */
-.deployment-grid {
-  display: grid;
-  gap: 0.75rem;
-}
+/* ── Deployment cards ── */
+.deployment-grid { display: grid; gap: 0.75rem; }
 
 .deployment-card {
   background: var(--surface);
@@ -401,10 +467,7 @@ pre {
   margin-bottom: 0.25rem;
 }
 
-.deployment-card p {
-  font-size: 0.84rem;
-  margin: 0;
-}
+.deployment-card p { font-size: 0.84rem; margin: 0; }
 
 /* ── Footer ── */
 footer {
@@ -419,16 +482,21 @@ footer {
 /* ── Theme toggle ── */
 .theme-toggle {
   position: fixed;
-  top: 1rem;
-  right: 1rem;
-  padding: 0.3rem 0.6rem;
+  top: 0.75rem;
+  right: 0.75rem;
+  padding: 0.4rem 0.7rem;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   color: var(--text-muted);
   cursor: pointer;
   font-size: 0.8rem;
+  min-height: 44px;
+  min-width: 44px;
+  z-index: 100;
 }
+
+.theme-toggle:hover { border-color: var(--alice); color: var(--text); }
 
 /* ── Security badge ── */
 .security-note {
@@ -439,20 +507,59 @@ footer {
   padding: 0.15rem 0.5rem;
   font-size: 0.75rem;
   color: var(--warning);
-  margin-left: 0.5rem;
+  margin-left: 0.4rem;
+  white-space: nowrap;
 }
 
 /* ── Spinner ── */
 .spinner {
   display: inline-block;
-  width: 1rem;
-  height: 1rem;
+  width: 0.9rem;
+  height: 0.9rem;
   border: 2px solid var(--border);
   border-top-color: var(--alice);
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
+  flex-shrink: 0;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Section headers in cards ── */
+.card-section-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
 }
+
+/* ── Live region for screen readers ── */
+[aria-live] { /* inherits */ }
+
+/* ── Visually hidden (screen reader only) ── */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* ── Reduced motion ── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Backwards compat: .exhibit is used alongside role=tabpanel */
+.exhibit { display: none; }
+.exhibit.active { display: block; }

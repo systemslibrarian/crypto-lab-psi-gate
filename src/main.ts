@@ -1,6 +1,6 @@
 import './style.css';
 import { runPSI, aliceRound1, bobRound2, aliceRound3, verifyCorrectness } from './psi.js';
-import { hashToPoint, pointToHex, randomScalar } from './group.js';
+import { hashToPoint, pointToHex, randomScalar, scalarMul } from './group.js';
 import {
   simulateSetSizeInflation,
   simulateDictionaryAttack,
@@ -30,29 +30,52 @@ function initThemeToggle(): void {
   const btn = document.createElement('button');
   btn.className = 'theme-toggle';
   btn.textContent = '☀ / ☾';
-  btn.setAttribute('aria-label', 'Toggle light/dark theme');
+  const updateLabel = (): void => {
+    const current = document.documentElement.getAttribute('data-theme') ?? 'dark';
+    btn.setAttribute('aria-label', `Switch to ${current === 'dark' ? 'light' : 'dark'} theme`);
+    btn.setAttribute('title', btn.getAttribute('aria-label')!);
+  };
+  updateLabel();
   btn.addEventListener('click', () => {
     const current = document.documentElement.getAttribute('data-theme');
     const next = current === 'dark' ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', next);
     localStorage.setItem('theme', next);
+    updateLabel();
   });
   document.body.appendChild(btn);
 }
 
 // ---------------------------------------------------------------------------
-// Tab routing
+// Tab routing (ARIA-compliant with keyboard navigation)
 // ---------------------------------------------------------------------------
 
 function initTabs(): void {
-  document.querySelectorAll<HTMLButtonElement>('.tab-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const target = btn.dataset['exhibit'];
-      if (!target) return;
-      document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
-      document.querySelectorAll('.exhibit').forEach((e) => e.classList.remove('active'));
-      btn.classList.add('active');
-      document.getElementById(`exhibit-${target}`)?.classList.add('active');
+  const tabs = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
+  const panels = Array.from(document.querySelectorAll<HTMLElement>('[role="tabpanel"]'));
+
+  function activateTab(tab: HTMLButtonElement): void {
+    tabs.forEach((t) => {
+      t.setAttribute('aria-selected', 'false');
+      t.setAttribute('tabindex', '-1');
+    });
+    panels.forEach((p) => p.classList.remove('active'));
+    tab.setAttribute('aria-selected', 'true');
+    tab.setAttribute('tabindex', '0');
+    tab.focus();
+    const controls = tab.getAttribute('aria-controls');
+    if (controls) document.getElementById(controls)?.classList.add('active');
+  }
+
+  tabs.forEach((btn, i) => {
+    btn.addEventListener('click', () => activateTab(btn));
+    btn.addEventListener('keydown', (e: KeyboardEvent) => {
+      let next = -1;
+      if (e.key === 'ArrowRight') next = (i + 1) % tabs.length;
+      else if (e.key === 'ArrowLeft') next = (i - 1 + tabs.length) % tabs.length;
+      else if (e.key === 'Home') next = 0;
+      else if (e.key === 'End') next = tabs.length - 1;
+      if (next !== -1) { e.preventDefault(); activateTab(tabs[next]); }
     });
   });
 }
@@ -98,7 +121,7 @@ function initExhibit1(): void {
 
   runBtn.addEventListener('click', () => {
     runBtn.disabled = true;
-    runBtn.innerHTML = '<span class="spinner"></span> Running PSI…';
+    runBtn.innerHTML = '<span class="spinner" aria-hidden="true"></span><span class="sr-only">Running PSI…</span> Running PSI…';
 
     // Defer to allow UI to update
     setTimeout(() => {
@@ -189,13 +212,13 @@ function initExhibit2(): void {
         <div class="card">
           <div class="info-grid">
             <span class="info-label">α (private, NEVER sent):</span>
-            <span class="scalar-censor info-value private" title="Click to reveal" onclick="this.classList.toggle('revealed')">${scalarHex}</span>
+            <button class="scalar-btn" aria-pressed="false" aria-label="Reveal private scalar (click to toggle)">${scalarHex}</button>
           </div>
         </div>
         <div class="set-label alice" style="margin-top:0.75rem">Blinded elements X_i = α · H(a_i) sent to Bob:</div>
         <ul class="element-list">
           ${r1.blindedElements
-            .map((pt) => `<li class="blinded" title="${esc(aliceSet.find((_el) => true) ?? '')}">X = ${truncateHex(pointToHex(pt))}</li>`)
+            .map((pt, i) => `<li class="blinded" title="Blinded(${esc(aliceSet[i])})">X_${i+1} = ${truncateHex(pointToHex(pt))}</li>`)
             .join('')}
         </ul>
         <div class="status info">Bob sees 3 random-looking curve points. He cannot recover Alice's emails.</div>`;
@@ -214,7 +237,7 @@ function initExhibit2(): void {
         <div class="card">
           <div class="info-grid">
             <span class="info-label">β (private, NEVER sent):</span>
-            <span class="scalar-censor info-value private" title="Click to reveal" onclick="this.classList.toggle('revealed')">${bScalarHex}</span>
+            <button class="scalar-btn" aria-pressed="false" aria-label="Reveal private scalar (click to toggle)">${bScalarHex}</button>
           </div>
         </div>
         <div class="card-row">
@@ -248,9 +271,9 @@ function initExhibit2(): void {
         <div class="set-label" style="color:var(--double-blinded)">W_j = α · Z_j (αβ · H(b_j))</div>
         <ul class="element-list" style="margin-bottom:0.75rem">
           ${r2.bobBlindedElements
-            .map((Z) => {
-              void Z
-              return `<li class="double-blinded">W = αβ · H(b_j)</li>`;
+            .map((Z, j) => {
+              const W = scalarMul(r1!.aliceScalar, Z);
+              return `<li class="double-blinded">W_${j+1} = ${truncateHex(pointToHex(W))}</li>`;
             })
             .join('')}
         </ul>
@@ -352,8 +375,8 @@ function initExhibit3(): void {
     }
 
     runBtn.disabled = true;
-    runBtn.innerHTML = '<span class="spinner"></span> Running…';
-    output.innerHTML = `<div class="status info">Running DH-PSI (${aliceSet.length} × ${bobSet.length} elements)…</div>`;
+    runBtn.innerHTML = '<span class="spinner" aria-hidden="true"></span><span class="sr-only">Running…</span> Running…';
+    output.innerHTML = `<div class="status info" role="status">Running DH-PSI (${aliceSet.length} × ${bobSet.length} elements)…</div>`;
 
     setTimeout(() => {
       const result = runPSI(aliceSet, bobSet);
@@ -558,6 +581,7 @@ function initExhibit5(): void {
 
 const appEl = document.getElementById('app')!;
 appEl.innerHTML = `
+<a href="#main-content" class="skip-link">Skip to main content</a>
 <header>
   <h1>PSI Gate</h1>
   <p>
@@ -570,16 +594,19 @@ appEl.innerHTML = `
   </p>
 </header>
 
-<nav class="tabs">
-  <button class="tab-btn active" data-exhibit="1">1. Contact Discovery</button>
-  <button class="tab-btn" data-exhibit="2">2. Protocol Walkthrough</button>
-  <button class="tab-btn" data-exhibit="3">3. Live Simulator</button>
-  <button class="tab-btn" data-exhibit="4">4. Attacks</button>
-  <button class="tab-btn" data-exhibit="5">5. Real-World</button>
+<nav aria-label="Demo exhibits">
+  <div role="tablist" aria-label="Demo exhibits">
+    <button id="tab-1" role="tab" aria-selected="true"  aria-controls="exhibit-1" tabindex="0"  class="tab-btn active">1. Contact Discovery</button>
+    <button id="tab-2" role="tab" aria-selected="false" aria-controls="exhibit-2" tabindex="-1" class="tab-btn">2. Protocol Walkthrough</button>
+    <button id="tab-3" role="tab" aria-selected="false" aria-controls="exhibit-3" tabindex="-1" class="tab-btn">3. Live Simulator</button>
+    <button id="tab-4" role="tab" aria-selected="false" aria-controls="exhibit-4" tabindex="-1" class="tab-btn">4. Attacks</button>
+    <button id="tab-5" role="tab" aria-selected="false" aria-controls="exhibit-5" tabindex="-1" class="tab-btn">5. Real-World</button>
+  </div>
 </nav>
 
+<main id="main-content">
 <!-- ── Exhibit 1 ── -->
-<section id="exhibit-1" class="exhibit active">
+<section id="exhibit-1" role="tabpanel" aria-labelledby="tab-1" class="exhibit active">
   <h2>The Contact Discovery Problem</h2>
   <p>
     You just downloaded <strong>PrayerWarriors.Mobi</strong>. Which of your 8 trusted
@@ -589,17 +616,17 @@ appEl.innerHTML = `
   <div class="card-row">
     <div>
       <div class="set-label alice">Your Contacts (Alice)</div>
-      <ul id="e1-alice-list" class="element-list"></ul>
+      <ul id="e1-alice-list" class="element-list" aria-label="Alice's contacts"></ul>
     </div>
     <div>
       <div class="set-label bob">App User Database (Bob / Server)</div>
-      <ul id="e1-bob-list" class="element-list"></ul>
+      <ul id="e1-bob-list" class="element-list" aria-label="Server's user database"></ul>
     </div>
   </div>
   <div style="margin-top:1rem">
     <button id="e1-run" class="btn primary">Run Private Set Intersection</button>
   </div>
-  <div id="e1-output"></div>
+  <div id="e1-output" aria-live="polite" aria-atomic="true"></div>
   <div class="card" style="margin-top:1rem">
     <div class="info-grid">
       <span class="info-label">Naive approach:</span>
@@ -611,42 +638,42 @@ appEl.innerHTML = `
 </section>
 
 <!-- ── Exhibit 2 ── -->
-<section id="exhibit-2" class="exhibit">
+<section id="exhibit-2" role="tabpanel" aria-labelledby="tab-2" class="exhibit">
   <h2>DH-PSI Protocol — Step by Step</h2>
   <p>
     The classic three-round interactive protocol. Click through each round to see
     how blinding transforms plain emails into random curve points — and back.
   </p>
-  <div id="e2-panel" class="step-panel"></div>
+  <div id="e2-panel" class="step-panel" aria-live="polite" aria-atomic="true"></div>
   <div class="step-nav">
     <button id="e2-prev" class="btn">← Prev</button>
-    <span id="e2-step" style="align-self:center;color:var(--text-muted);font-size:0.85rem"></span>
+    <span id="e2-step" style="align-self:center;color:var(--text-muted);font-size:0.85rem" aria-live="polite"></span>
     <button id="e2-next" class="btn primary">Next →</button>
   </div>
 </section>
 
 <!-- ── Exhibit 3 ── -->
-<section id="exhibit-3" class="exhibit">
+<section id="exhibit-3" role="tabpanel" aria-labelledby="tab-3" class="exhibit">
   <h2>Live Contact Matching Simulator</h2>
   <p>Enter your own sets — one element per line. PSI runs entirely in your browser.</p>
   <div class="card-row">
     <div>
-      <div class="set-label alice">Alice's Set (your contacts)</div>
+      <label for="e3-alice" class="set-label alice">Alice's Set (your contacts)</label>
       <textarea id="e3-alice" placeholder="Enter one element per line…"></textarea>
     </div>
     <div>
-      <div class="set-label bob">Bob's Set (server user database)</div>
+      <label for="e3-bob" class="set-label bob">Bob's Set (server user database)</label>
       <textarea id="e3-bob" placeholder="Enter one element per line…"></textarea>
     </div>
   </div>
   <div style="margin-top:0.75rem">
     <button id="e3-run" class="btn primary">Run PSI</button>
   </div>
-  <div id="e3-output"></div>
+  <div id="e3-output" aria-live="polite" aria-atomic="true"></div>
 </section>
 
 <!-- ── Exhibit 4 ── -->
-<section id="exhibit-4" class="exhibit">
+<section id="exhibit-4" role="tabpanel" aria-labelledby="tab-4" class="exhibit">
   <h2>What Can Go Wrong — Attack Simulations</h2>
 
   <div class="card">
@@ -656,7 +683,7 @@ appEl.innerHTML = `
       hide his database size, or deflate to look smaller.
     </p>
     <button id="e4-a1-run" class="btn danger">Simulate Inflation</button>
-    <div id="e4-a1-output"></div>
+    <div id="e4-a1-output" aria-live="polite" aria-atomic="true"></div>
   </div>
 
   <div class="card">
@@ -666,7 +693,7 @@ appEl.innerHTML = `
       Bob can enumerate the entire domain as his set and learn Alice's full set.
     </p>
     <button id="e4-a2-run" class="btn danger">Simulate Dictionary Attack</button>
-    <div id="e4-a2-output"></div>
+    <div id="e4-a2-output" aria-live="polite" aria-atomic="true"></div>
   </div>
 
   <div class="card">
@@ -676,14 +703,14 @@ appEl.innerHTML = `
       detect which elements changed — even without reading any element values.
     </p>
     <button id="e4-a3-run" class="btn danger">Simulate Scalar Reuse</button>
-    <div id="e4-a3-output"></div>
+    <div id="e4-a3-output" aria-live="polite" aria-atomic="true"></div>
   </div>
 </section>
 
 <!-- ── Exhibit 5 ── -->
-<section id="exhibit-5" class="exhibit">
+<section id="exhibit-5" role="tabpanel" aria-labelledby="tab-5" class="exhibit">
   <h2>Real-World PSI Deployments</h2>
-  <div id="e5-selftest"></div>
+  <div id="e5-selftest" aria-live="polite" aria-atomic="true"></div>
 
   <div class="deployment-grid" style="margin-top:1rem">
     <div class="deployment-card">
@@ -736,7 +763,7 @@ appEl.innerHTML = `
 
   <div class="card" style="margin-top:1rem">
     <h3>Related Crypto Labs</h3>
-    <pre>crypto-lab-opaque-gate       — aPAKE (authentication, related primitive)
+    <pre aria-label="Related crypto lab projects">crypto-lab-opaque-gate       — aPAKE (authentication, related primitive)
 crypto-lab-silent-tally      — private aggregation
 crypto-lab-blind-oracle      — TFHE (general-purpose PSI via FHE)
 crypto-lab-oblivious-shelf   — PIR (private information retrieval)
@@ -745,6 +772,7 @@ crypto-lab-paillier-gate     — Paillier (used in some PSI variants)
 crypto-lab-ot-gate           — oblivious transfer (used in OPRF-PSI)</pre>
   </div>
 </section>
+</main>
 
 <footer>
   <p>DH-PSI (Meadows 1986, Huberman-Franklin-Hogg 1999) · ristretto255 via @noble/curves</p>
@@ -762,3 +790,12 @@ initExhibit2();
 initExhibit3();
 initExhibit4();
 initExhibit5();
+
+// Scalar-btn: reveal on click/keyboard via event delegation
+document.addEventListener('click', (e) => {
+  const btn = (e.target as Element).closest<HTMLButtonElement>('.scalar-btn');
+  if (!btn) return;
+  const pressed = btn.getAttribute('aria-pressed') === 'true';
+  btn.setAttribute('aria-pressed', pressed ? 'false' : 'true');
+  btn.classList.toggle('revealed', !pressed);
+});

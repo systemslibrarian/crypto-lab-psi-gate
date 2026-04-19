@@ -4,11 +4,6 @@
  * Ristretto255 is a prime-order group built on Curve25519.
  * It provides the DDH hardness assumption needed for DH-PSI security.
  */
-
-// Use @ts-nocheck to bypass the protected `.ep` field access in @noble/curves v2.
-// All operations are legitimate cryptographic scalar multiplications.
-// The library doesn't expose a public scalar-mult API on the ristretto wrapper,
-// so we access the underlying Edwards point via the protected field.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { ristretto255_hasher } from '@noble/curves/ed25519.js';
@@ -24,16 +19,10 @@ export const GROUP = {
 
 const ORDER: bigint = ristretto255_hasher.Point.Fn.ORDER;
 
-// Obtain the Edwards point class from the module's Point static.
-// ristretto255_hasher.Point is the ristretto wrapper; its BASE.ep is the underlying
-// Edwards generator. We capture the constructor via any-cast.
-const _wrapperBase: any = ristretto255_hvia type-safe path.
-// ristretto255_hasher.Point resolves over the hasher's internal point class;
-// we cast to access the ristretto PrimeEdwardsPoint internals.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const _hasherAny = ristretto255_hasher as any;
-type EdwardsPoint = { multiply(n: bigint): EdwardsPoint; equals(other: EdwardsPoint): boolean; toBytes(): Uint8Array; toHex(): string };
-const EdPtClass = _hasherAny.Point as { fromHex: (hex: string) => EdwardsPoint // ---------------------------------------------------------------------------
+// Obtain the Edwards point class by reaching through the ristretto wrapper.
+// @noble/curves v2 marks .ep as protected, so we use any-cast to access it.
+const _wrapperBase: any = ristretto255_hasher.Point.BASE;
+const EdPtClass: any = Object.getPrototypeOf(_wrapperBase.ep).constructor;
 
 function bigintToBytes(n: bigint): Uint8Array {
   const hex = n.toString(16).padStart(64, '0');
@@ -71,8 +60,7 @@ export function randomScalar(): Scalar {
 export function hashToPoint(element: string): GroupPoint {
   const bytes = new TextEncoder().encode(element);
   const wrapper: any = ristretto255_hasher.hashToCurve(bytes);
-  const edPt: any = wrapper.ep;
-  return edPt.toBytes() as Uint8Array;
+  return (wrapper.ep as any).toBytes() as Uint8Array;
 }
 
 /**
@@ -84,8 +72,7 @@ export function scalarMul(scalar: Scalar, point: GroupPoint): GroupPoint {
     .map((x) => x.toString(16).padStart(2, '0'))
     .join('');
   const edPt: any = EdPtClass.fromHex(hex);
-  const result: any = edPt.multiply(s);
-  return result.toBytes() as Uint8Array;
+  return (edPt.multiply(s) as any).toBytes() as Uint8Array;
 }
 
 /**
@@ -93,22 +80,23 @@ export function scalarMul(scalar: Scalar, point: GroupPoint): GroupPoint {
  */
 export function pointEqual(a: GroupPoint, b: GroupPoint): boolean {
   if (a.length !== b.length) return false;
-  const hexA = Array.from(a).map((x) => x.toString(16).padStart(2, '0')).join('');
-  const hexB = Array.from(b).map((x) => x.toString(16).padStart(2, '0')).join('');
-  const ptA: any = EdPtClass.fromHex(hexA);
-  const ptB: any = EdPtClass.fromHex(hexB);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const wrapper = ristretto255_hasher.hashToCurve(bytes) as any;
-  return pointToBytes(wrapper.ep as EdwardsPoint
+  const toHex = (p: GroupPoint) =>
+    Array.from(p)
+      .map((x) => x.toString(16).padStart(2, '0'))
+      .join('');
+  const ptA: any = EdPtClass.fromHex(toHex(a));
+  const ptB: any = EdPtClass.fromHex(toHex(b));
+  return ptA.equals(ptB) as boolean;
+}
 
-/** Encode a point as a lowercase hex string for "network transmission". */
+/** Encode a point as a lowercase hex string. */
 export function pointToHex(p: GroupPoint): string {
   return Array.from(p)
     .map((x) => x.toString(16).padStart(2, '0'))
     .join('');
 }
 
-/** Decode a hex string back to a point. */
+/** Decode a hex string back to a GroupPoint. */
 export function hexToPoint(h: string): GroupPoint {
   const out = new Uint8Array(32);
   for (let i = 0; i < 32; i++) {

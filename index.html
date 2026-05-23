@@ -4,9 +4,51 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PSI Gate — Private Set Intersection</title>
+    <meta name="description" content="Browser-based Private Set Intersection (DH-PSI on ristretto255) — compute A ∩ B without revealing non-matching elements." />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#0a0a0f" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f8f8ff" media="(prefers-color-scheme: light)" />
+    <link rel="canonical" href="https://systemslibrarian.github.io/crypto-lab-psi-gate/" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="PSI Gate — Private Set Intersection" />
+    <meta property="og:description" content="Browser-based DH-PSI / OPRF-PSI on ristretto255 — compute A ∩ B without revealing non-matching elements. Test vectors, benchmarks, security argument." />
+    <meta property="og:url" content="https://systemslibrarian.github.io/crypto-lab-psi-gate/" />
+    <meta name="twitter:card" content="summary" />
+    <!--
+      Strict-ish CSP. The single inline script below is pinned by its
+      SHA-256 hash; any other inline script (or any remote script) is
+      blocked. All cryptography runs in-page from the bundled module —
+      no network calls at runtime.
+    -->
+    <meta http-equiv="Content-Security-Policy"
+      content="default-src 'self';
+               script-src 'self' 'sha256-54ZiwMr6drfgXlEjX26qcBM2XawnFeicQNVdvJV6tTs=';
+               style-src 'self' 'unsafe-inline';
+               img-src 'self' data:;
+               font-src 'self';
+               connect-src 'self';
+               worker-src 'self' blob:;
+               object-src 'none';
+               base-uri 'self';
+               form-action 'none';
+               frame-ancestors 'none';
+               upgrade-insecure-requests" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
     <script>
-      const saved = localStorage.getItem('theme');
-      document.documentElement.setAttribute('data-theme', saved ?? 'dark');
+      // Pick initial theme: saved choice wins, then OS preference, then dark.
+      // Runs inline (pre-paint) to avoid a flash of the wrong theme.
+      (function () {
+        var saved = null;
+        try { saved = localStorage.getItem('theme'); } catch (_) {}
+        var theme = saved;
+        if (theme !== 'dark' && theme !== 'light') {
+          theme = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches)
+            ? 'light' : 'dark';
+        }
+        document.documentElement.setAttribute('data-theme', theme);
+      })();
     </script>
     <link rel="stylesheet" href="/src/style.css" />
   </head>

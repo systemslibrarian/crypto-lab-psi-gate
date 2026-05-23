@@ -19,10 +19,11 @@ export const GROUP = {
 
 const ORDER: bigint = ristretto255_hasher.Point.Fn.ORDER;
 
-// Obtain the Edwards point class by reaching through the ristretto wrapper.
-// @noble/curves v2 marks .ep as protected, so we use any-cast to access it.
-const _wrapperBase: any = ristretto255_hasher.Point.BASE;
-const EdPtClass: any = Object.getPrototypeOf(_wrapperBase.ep).constructor;
+// The ristretto255 prime-order wrapper. All point encoding/decoding here
+// goes through the canonical RFC 9496 ristretto encoding so the byte
+// strings interoperate with any standards-compliant ristretto255 library
+// (libsodium, ristretto-rs, …).
+const RistrettoPt: any = ristretto255_hasher.Point;
 
 function bigintToBytes(n: bigint): Uint8Array {
   const hex = n.toString(16).padStart(64, '0');
@@ -54,39 +55,84 @@ export function randomScalar(): Scalar {
 }
 
 /**
+ * Derive a scalar deterministically from a hex seed string.
+ * Used for reproducible test vectors only — NEVER for production.
+ * Reduces the seed mod ORDER and clamps to [1, ORDER-1].
+ */
+export function scalarFromSeed(hexSeed: string): Scalar {
+  let h = hexSeed.toLowerCase().replace(/[^0-9a-f]/g, '');
+  if (h.length === 0) h = '01';
+  // Pad/truncate to 64 hex chars (32 bytes).
+  if (h.length < 64) h = h.padStart(64, '0');
+  if (h.length > 64) h = h.slice(-64);
+  let n = BigInt('0x' + h) % ORDER;
+  if (n === 0n) n = 1n;
+  return bigintToBytes(n);
+}
+
+/**
+ * Check whether the given 32 bytes decode to a valid ristretto255 point.
+ * Returns false for non-canonical encodings, low-order points,
+ * or otherwise-invalid inputs. Crucial for malicious-secure PSI.
+ */
+export function isValidPoint(bytes: Uint8Array): boolean {
+  if (bytes.length !== 32) return false;
+  try {
+    // ristretto255 decoding rejects non-canonical / invalid encodings
+    // and (by design) excludes the cofactor / low-order subgroup.
+    RistrettoPt.fromBytes(bytes);
+    // The identity element decodes successfully but is dangerous in PSI:
+    // β·O = O for every i, collapsing all outputs. Reject it explicitly.
+    return !bytes.every((b) => b === 0);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Hash an arbitrary string to a ristretto255 group point.
- * Uses ristretto255_hasher.hashToCurve (RFC 9380 compliant).
+ * Uses ristretto255_hasher.hashToCurve (RFC 9380 compliant) and
+ * returns the canonical 32-byte ristretto encoding (RFC 9496).
  */
 export function hashToPoint(element: string): GroupPoint {
   const bytes = new TextEncoder().encode(element);
   const wrapper: any = ristretto255_hasher.hashToCurve(bytes);
-  return (wrapper.ep as any).toBytes() as Uint8Array;
+  return wrapper.toBytes() as Uint8Array;
+}
+
+/**
+ * Compute the multiplicative inverse of a scalar mod the group order.
+ * Required for OPRF-PSI: Alice unblinds by multiplying by α⁻¹.
+ * Uses Fermat's little theorem: a⁻¹ ≡ a^(ORDER-2) (mod ORDER).
+ * Throws on 0 (no inverse).
+ */
+export function scalarInverse(scalar: Scalar): Scalar {
+  const n = bytesToBigint(scalar);
+  if (n === 0n) throw new Error('scalarInverse: zero has no inverse');
+  // Use the field arithmetic from noble (constant-time path inside the lib).
+  const inv = ristretto255_hasher.Point.Fn.inv(n);
+  return bigintToBytes(inv);
 }
 
 /**
  * Scalar multiplication: scalar · point in ristretto255.
+ * Operates on canonical 32-byte ristretto encodings.
  */
 export function scalarMul(scalar: Scalar, point: GroupPoint): GroupPoint {
   const s = bytesToBigint(scalar);
-  const hex = Array.from(point)
-    .map((x) => x.toString(16).padStart(2, '0'))
-    .join('');
-  const edPt: any = EdPtClass.fromHex(hex);
-  return (edPt.multiply(s) as any).toBytes() as Uint8Array;
+  const pt: any = RistrettoPt.fromBytes(point);
+  return pt.multiply(s).toBytes() as Uint8Array;
 }
 
 /**
- * Compare two group points for equality.
+ * Compare two group points for equality on their canonical encoding.
+ * Since ristretto255 has a unique canonical encoding per group element,
+ * byte equality is point equality.
  */
 export function pointEqual(a: GroupPoint, b: GroupPoint): boolean {
   if (a.length !== b.length) return false;
-  const toHex = (p: GroupPoint) =>
-    Array.from(p)
-      .map((x) => x.toString(16).padStart(2, '0'))
-      .join('');
-  const ptA: any = EdPtClass.fromHex(toHex(a));
-  const ptB: any = EdPtClass.fromHex(toHex(b));
-  return ptA.equals(ptB) as boolean;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
 }
 
 /** Encode a point as a lowercase hex string. */

@@ -52,15 +52,35 @@ Round 3 (Alice):  Compute W_j = α·Z_j.  Intersection = {a_i : Y_i ∈ {W_j}}.
 **Why it works:** Both α and β are applied to matched elements, giving the same
 `αβ·H(x)` regardless of order (DDH commutativity). Non-matched elements look random.
 
-## Five Exhibits
+## Six Exhibits
 
 | # | Exhibit | What you see |
 |---|---------|--------------|
 | 1 | Contact Discovery Problem | PrayerWarriors.Mobi scenario; naive vs PSI approach |
 | 2 | Protocol Walkthrough | Step-by-step with animated blinding/unblinding |
 | 3 | Live Simulator | Paste your own sets; run PSI instantly |
-| 4 | Attack Demos | Set size inflation, dictionary attack, scalar reuse |
+| 4 | Attack Demos | Set size inflation, dictionary attack, scalar reuse, malformed-point injection |
 | 5 | Real-World Deployments | Signal, Apple, Google, DP3T, healthcare |
+| 6 | Cryptographer's Lab | Test vectors, wire transcript, benchmarks, security argument, PSI protocol comparison |
+
+### Cryptographer's Lab (Exhibit 6)
+
+For reviewers and implementers who need byte-level rigor:
+
+- **Canonical test vectors** — fixed inputs (α seed = `…0007`, β seed = `…000b`,
+  A = `{alice,bob,mom}@example.com`, B = `{bob,mom,eve}@example.com`) produce a
+  deterministic trace. Any conforming DH-PSI/ristretto255 implementation must
+  reproduce every H(x), X_i, Y_i, Z_j, and W_j byte-for-byte.
+- **Wire-format transcript** — every ristretto point on the wire as a 32-byte
+  hex dump, color-coded by sender. Verifies linear O(n+m) communication.
+- **Benchmarks** — live measurement of `hashToPoint`, `scalarMul`,
+  `randomScalar`, and end-to-end PSI at multiple set sizes in your browser.
+- **Simulator-based security argument** — sketches of the simulators for
+  corrupt Alice and corrupt Bob under DDH; honest list of what this
+  implementation is NOT (constant-time, malicious-secure, side-channel hardened,
+  formally verified).
+- **Protocol comparison** — DH-PSI vs OPRF-PSI vs KKRT16 vs CM20 vs PaXoS/VOLE-PSI
+  vs FHE-PSI, with communication, computation, security model, and year.
 
 ## What Can Go Wrong
 
@@ -101,9 +121,30 @@ abstraction behind Signal Double Ratchet and X25519.
 ## Stack
 
 - **Vite + TypeScript strict** — `noUnusedLocals`, `noUnusedParameters`, full strict mode
-- **`@noble/curves`** — ristretto255 via `ristretto255_hasher` (RFC 9380 hash-to-curve)
+- **`@noble/curves`** — ristretto255 via `ristretto255_hasher` (RFC 9380 hash-to-curve, RFC 9496 ristretto encoding)
+- **Vitest + GitHub Actions** — golden test vectors, randomized property tests, CI on Node 20 + 22
+- **Web Worker offload** — `src/psi-worker.ts` keeps the UI responsive during 1k+ PSI runs and DDH sampling
+- **CSP-hardened** — hash-pinned inline script, no remote sources, `worker-src 'self' blob:`
 - **No backends, no server** — GitHub Pages static deployment
 - **No `Math.random()`** — all randomness via `crypto.getRandomValues`
+
+## Protocols
+
+Two interoperating protocols are implemented and can be toggled in Exhibit 3:
+
+- **DH-PSI** (`src/psi.ts`) — the three-round Meadows/HFH protocol; pedagogical baseline.
+- **OPRF-PSI** (`src/oprf-psi.ts`) — Jarecki-Liu 2010; what Signal contact discovery uses
+  in spirit. Bob publishes PRF tags once, Alice queries with a per-query α, unblinds with α⁻¹.
+
+## Testing
+
+```
+npm test          # Vitest run (26 tests: group ops, DH-PSI, OPRF-PSI, attacks, test vectors)
+npm run test:watch
+```
+
+CI runs on every push/PR via `.github/workflows/test.yml`:
+typecheck → tests → production build, on Node 20 and 22.
 
 ## Related Crypto Labs
 

@@ -17,6 +17,32 @@ import {
   pointToHex,
 } from './group.js';
 
+/**
+ * A complete protocol trace — every wire-visible value, in order.
+ * Used by the cryptographer's lab (test vectors, transcript viewer).
+ * NEVER expose aliceScalar / bobScalar in real systems; they are
+ * recorded here only so reviewers can replay the computation.
+ */
+export interface PSITrace {
+  aliceSet: string[];
+  bobSet: string[];
+  aliceScalar: Scalar;
+  bobScalar: Scalar;
+  /** H(a_i) — Alice's plaintext hashed to curve (not sent on the wire) */
+  hashedAlice: GroupPoint[];
+  /** H(b_j) — Bob's plaintext hashed to curve (not sent on the wire) */
+  hashedBob: GroupPoint[];
+  /** Round 1, A→B: X_i = α·H(a_i), in the order Alice sends them (post-shuffle) */
+  wireA2B_X: GroupPoint[];
+  /** Round 2, B→A: Y_i = β·X_i, order preserved relative to X_i */
+  wireB2A_Y: GroupPoint[];
+  /** Round 2, B→A: Z_j = β·H(b_j), post-shuffle */
+  wireB2A_Z: GroupPoint[];
+  /** W_j = α·Z_j — Alice's local computation, not on the wire */
+  computedW: GroupPoint[];
+  intersection: string[];
+}
+
 export interface AliceRound1 {
   /** X_i = α · H(a_i), shuffled */
   blindedElements: GroupPoint[];
@@ -130,6 +156,43 @@ export function runPSI(aliceSet: string[], bobSet: string[]): PSIResult {
   const r1 = aliceRound1(aliceSet);
   const r2 = bobRound2(r1, bobSet);
   return aliceRound3(r1, r2, aliceSet);
+}
+
+/**
+ * Run a fully deterministic PSI trace with caller-supplied scalars and NO
+ * shuffling. This is the test-vector mode: every byte is reproducible.
+ * Real protocol runs MUST shuffle and MUST use fresh random scalars.
+ */
+export function tracePSI(
+  aliceSet: string[],
+  bobSet: string[],
+  aliceScalar: Scalar,
+  bobScalar: Scalar
+): PSITrace {
+  const hashedAlice = aliceSet.map((el) => hashToPoint(el));
+  const hashedBob = bobSet.map((el) => hashToPoint(el));
+  const wireA2B_X = hashedAlice.map((H) => scalarMul(aliceScalar, H));
+  const wireB2A_Y = wireA2B_X.map((X) => scalarMul(bobScalar, X));
+  const wireB2A_Z = hashedBob.map((H) => scalarMul(bobScalar, H));
+  const computedW = wireB2A_Z.map((Z) => scalarMul(aliceScalar, Z));
+  const wHexSet = new Set(computedW.map(pointToHex));
+  const intersection: string[] = [];
+  for (let i = 0; i < wireB2A_Y.length; i++) {
+    if (wHexSet.has(pointToHex(wireB2A_Y[i]))) intersection.push(aliceSet[i]);
+  }
+  return {
+    aliceSet,
+    bobSet,
+    aliceScalar,
+    bobScalar,
+    hashedAlice,
+    hashedBob,
+    wireA2B_X,
+    wireB2A_Y,
+    wireB2A_Z,
+    computedW,
+    intersection,
+  };
 }
 
 /** Verify correctness against plain-text intersection (demo only). */

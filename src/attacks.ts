@@ -4,7 +4,13 @@
  * These demonstrate real limitations of the protocol. Each attack is
  * executable — produce concrete outputs showing information leakage.
  */
-import { type Scalar } from './group.js';
+import {
+  type Scalar,
+  hashToPoint,
+  pointToHex,
+  scalarMul,
+  isValidPoint,
+} from './group.js';
 import { runPSI } from './psi.js';
 
 // ---------------------------------------------------------------------------
@@ -113,45 +119,51 @@ export function simulateReplayAttack(
   stableElements: number;
   addedElements: number;
   removedElements: number;
+  /** Number of Y_i hex strings Bob sees in BOTH sessions (purely from wire data). */
+  linkedYCount: number;
+  /** Truncated samples of linked Y_i values — Bob sees these byte-for-byte twice. */
+  linkedYSamples: string[];
   warningMessage: string;
 } {
-  // Import inline to avoid circular deps
-  // We simulate by running PSI with a fixed scalar manually
-  // For demo purposes: run normally but note that with reused alpha,
-  // Bob would see the same blinded Y values for unchanged elements.
-  // We simulate the "what Bob infers" by comparing the two sets.
+  // Run PSI with fresh scalars in each session to produce the displayed
+  // session intersections (these are what Alice computes; correct in both cases).
   const r1 = runPSI(aliceSession1Set, bobSet);
   const r2 = runPSI(aliceSession2Set, bobSet);
 
+  // Now demonstrate the actual leak: Alice reuses α. Bob sees, byte-for-byte,
+  // the SAME Y_i = α·H(a_i) for any element that's stable across sessions.
+  // No plaintext involved — Bob's whole knowledge is the two sets of Y hex strings.
+  const ySession1 = aliceSession1Set.map((el) =>
+    pointToHex(scalarMul(reusedAlpha, hashToPoint(el)))
+  );
+  const ySession2 = aliceSession2Set.map((el) =>
+    pointToHex(scalarMul(reusedAlpha, hashToPoint(el)))
+  );
+  const ySession1Set = new Set(ySession1);
+  const linkedY = ySession2.filter((y) => ySession1Set.has(y));
+  const linkedYCount = linkedY.length;
+  const linkedYSamples = linkedY.slice(0, 3).map((y) => y.slice(0, 16) + '…');
+
   const s1Set = new Set(aliceSession1Set);
   const s2Set = new Set(aliceSession2Set);
-
-  // Elements stable (appear in both sessions)
   const stableElements = aliceSession1Set.filter((el) => s2Set.has(el)).length;
-  // Added in session 2
   const addedElements = aliceSession2Set.filter((el) => !s1Set.has(el)).length;
-  // Removed in session 2
-  const removedElements = aliceSession1Set.filter(
-    (el) => !s2Set.has(el)
-  ).length;
+  const removedElements = aliceSession1Set.filter((el) => !s2Set.has(el)).length;
 
-  // With reused α, Bob can detect any difference between sessions by
-  // comparing the Y_i multisets. If |A₁ △ A₂| > 0, Bob infers change.
-  const bobInfersAliceChange = addedElements > 0 || removedElements > 0;
-
-  // Suppress unused parameter warning — reusedAlpha is only conceptually used
-  void reusedAlpha;
+  // Sanity check: the Y_i overlap Bob observes equals the true stable count.
+  // (If this ever diverges, the leak is even worse than advertised.)
+  const bobInfersAliceChange =
+    addedElements > 0 || removedElements > 0 || linkedYCount !== aliceSession1Set.length;
 
   const warningMessage = bobInfersAliceChange
-    ? `LEAK: Bob can detect that Alice's set changed between sessions. ` +
-      `With reused α, ${addedElements} elements appear new and ` +
-      `${removedElements} elements disappeared. ` +
-      `Bob cannot read the elements, but he can track that Alice's ` +
-      `contact list changed — a privacy violation. ` +
-      `Fix: always use a fresh random scalar per session.`
-    : `No change detected between sessions (sets are identical). ` +
-      `Bob would still learn the two sessions used the same α ` +
-      `via the identical Y_i values.`;
+    ? `LEAK: With reused α, Bob sees ${linkedYCount} byte-identical Y_i value(s) ` +
+      `across the two sessions — these are stable elements in Alice's set. ` +
+      `Bob also sees ${addedElements} new Y_i value(s) (added) and ` +
+      `${removedElements} disappeared Y_i value(s) (removed). ` +
+      `He learns the size of the change without learning a single plaintext. ` +
+      `Fix: fresh random α per session — MANDATORY.`
+    : `Sets identical across sessions. Bob still sees ${linkedYCount} byte-identical ` +
+      `Y_i value(s), confirming the same α was used twice (a fingerprint by itself).`;
 
   return {
     session1Intersection: r1.intersection,
@@ -160,6 +172,114 @@ export function simulateReplayAttack(
     stableElements,
     addedElements,
     removedElements,
+    linkedYCount,
+    linkedYSamples,
     warningMessage,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Attack 4 — Malformed / Low-Order Point Injection
+// ---------------------------------------------------------------------------
+
+export interface InjectionProbe {
+  /** Short label for the malicious encoding being probed. */
+  label: string;
+  /** The 32-byte encoding Bob tries to inject. */
+  bytesHex: string;
+  /** Whether ristretto255 decode + identity check accepted the point. */
+  accepted: boolean;
+  /** What would happen if accepted: human-readable consequence. */
+  consequence: string;
+}
+
+/**
+ * MALICIOUS BOB / NETWORK ATTACKER: Submit malformed or special-form points.
+ *
+ * Some PSI variants on raw curves (Curve25519, secp256k1) are vulnerable to:
+ *   - The identity element O — scalar·O = O, so all Y_i collapse to one value.
+ *   - Low-order points — torsion subgroup leaks bits of α.
+ *   - Non-canonical encodings — two distinct encodings of the same point,
+ *     used to fingerprint implementations or fork signatures.
+ *
+ * Ristretto255 is designed to make these failures impossible by construction:
+ *   - The encoding is canonical (each point has exactly one byte form).
+ *   - The group has prime order, so no low-order subgroup exists.
+ *   - The identity has a distinct, recognizable encoding (all-zero bytes).
+ *
+ * This probe attempts each malicious encoding and reports whether
+ * ristretto255 + a single identity check rejects it.
+ */
+export function simulateMalformedPointInjection(): {
+  probes: InjectionProbe[];
+  ristrettoVerdict: string;
+} {
+  const probes: InjectionProbe[] = [];
+
+  // (1) Identity element — canonical ristretto encoding of O is 32 zero bytes.
+  // Decoding succeeds on most libraries; an explicit identity check is needed.
+  const identity = new Uint8Array(32);
+  probes.push({
+    label: 'Identity element O (all-zero encoding)',
+    bytesHex: pointToHex(identity),
+    accepted: isValidPoint(identity),
+    consequence:
+      'If accepted: β·O = O for every i, so every Y_i is the same point. ' +
+      'Alice cannot distinguish elements; intersection result becomes meaningless ' +
+      '(or trivially "all match" against another identity).',
+  });
+
+  // (2) Non-canonical encoding — high bit set in last byte (invalid in ristretto).
+  const nonCanonical = new Uint8Array(32);
+  nonCanonical[31] = 0x80;
+  probes.push({
+    label: 'Non-canonical encoding (high bit set)',
+    bytesHex: pointToHex(nonCanonical),
+    accepted: isValidPoint(nonCanonical),
+    consequence:
+      'On raw Ed25519, a malformed sign bit can encode the same point two ways, ' +
+      'enabling implementation fingerprinting and signature malleability. ' +
+      'Ristretto rejects all non-canonical encodings.',
+  });
+
+  // (3) Random 32 bytes — almost never a valid ristretto encoding.
+  const garbage = new Uint8Array(32);
+  crypto.getRandomValues(garbage);
+  probes.push({
+    label: 'Random 32 bytes (garbage)',
+    bytesHex: pointToHex(garbage),
+    accepted: isValidPoint(garbage),
+    consequence:
+      'Most random 32-byte strings are not valid ristretto encodings (~50% rejection rate). ' +
+      'A protocol that skips validation would crash on scalarMul, or worse, fall through ' +
+      'to an unspecified scalar field operation.',
+  });
+
+  // (4) Known low-order Edwards point encoding — included for raw-Ed25519 comparison.
+  // On ristretto this should also be rejected because it's not in the prime-order group.
+  const lowOrder = new Uint8Array([
+    0xec, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f,
+  ]);
+  probes.push({
+    label: 'Order-2 point (raw Curve25519 torsion)',
+    bytesHex: pointToHex(lowOrder),
+    accepted: isValidPoint(lowOrder),
+    consequence:
+      'On raw Curve25519, this point has order 2: 2·P = O. Reveals the parity of α. ' +
+      'Ristretto255 has prime order (no torsion subgroup) — encoding is rejected outright.',
+  });
+
+  const accepted = probes.filter((p) => p.accepted).length;
+  const ristrettoVerdict =
+    accepted === 0
+      ? `Ristretto255 + identity check rejected all ${probes.length} malicious encodings. ` +
+        `This is the point of using ristretto255 instead of raw Ed25519: invalid-curve ` +
+        `and small-subgroup attacks are impossible by construction.`
+      : `WARNING: ${accepted}/${probes.length} malicious encodings were accepted. ` +
+        `The implementation is missing critical input validation.`;
+
+  return { probes, ristrettoVerdict };
 }

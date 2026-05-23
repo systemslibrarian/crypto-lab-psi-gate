@@ -25,14 +25,26 @@
   --focus: #00d4ff;
 }
 
+/* Light-theme overrides — all accent colors retuned for WCAG AA contrast
+   against the near-white surfaces. Original (saturated) accents fail AA
+   on white; these are darker variants that hit ≥4.5:1 for normal text. */
 [data-theme='light'] {
+  --alice: #006d8f;
+  --bob: #b8006a;
+  --blinded: #8a6a00;
+  --double-blinded: #5a1e9a;
+  --match: #00794a;
+  --no-match: #6a6a7a;
+  --private: #b8002d;
+  --warning: #8a5200;
+
   --bg: #f8f8ff;
   --surface: #ffffff;
   --surface2: #f0f0f8;
   --border: #c8c8dd;
-  --text: #1a1a2e;
-  --text-muted: #5555aa;
-  --no-match: #888899;
+  --text: #14142b;
+  --text-muted: #44447a;
+  --focus: #006d8f;
 }
 
 /* ── Reset & base ── */
@@ -230,8 +242,8 @@ p {
 
 .element-list li {
   font-family: var(--mono);
-  font-size: clamp(0.72rem, 2vw, 0.82rem);
-  padding: 0.25rem 0.5rem;
+  font-size: clamp(0.8rem, 2vw, 0.85rem);
+  padding: 0.3rem 0.55rem;
   border-radius: 4px;
   background: var(--surface2);
   border: 1px solid var(--border);
@@ -243,6 +255,20 @@ p {
   color: var(--match);
   border-color: var(--match);
   box-shadow: 0 0 8px color-mix(in srgb, var(--match) 30%, transparent);
+  /* WCAG 1.4.1 — supplement color with a glyph so the match state is
+     conveyed without relying on color alone. */
+  padding-left: 1.6rem;
+  position: relative;
+}
+
+.element-list li.match::before {
+  content: '✓';
+  position: absolute;
+  left: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-weight: 700;
+  color: var(--match);
 }
 
 .element-list li.no-match { color: var(--no-match); }
@@ -283,10 +309,15 @@ textarea {
   border-radius: var(--radius);
   color: var(--text);
   font-family: var(--mono);
-  font-size: clamp(0.72rem, 2vw, 0.82rem);
+  /* 16px minimum prevents iOS Safari auto-zoom on focus. */
+  font-size: 16px;
   padding: 0.75rem;
   resize: vertical;
   min-height: 7rem;
+}
+
+@media (min-width: 600px) {
+  textarea { font-size: 0.875rem; }
 }
 
 textarea:focus {
@@ -305,7 +336,7 @@ pre {
   padding: 1rem;
   overflow-x: auto;
   font-family: var(--mono);
-  font-size: clamp(0.68rem, 1.8vw, 0.8rem);
+  font-size: clamp(0.78rem, 1.8vw, 0.85rem);
   line-height: 1.6;
   white-space: pre;
   -webkit-overflow-scrolling: touch;
@@ -356,29 +387,38 @@ pre {
 .status.error { color: var(--private); }
 .status.info  { color: var(--alice); }
 
-/* ── Scalar censor (button) ── */
+/* ── Scalar censor (button) ──
+   Censored state: text + bg share the same color so the hex value is
+   visually hidden. Revealed state: distinct text/bg with AA contrast.
+   The hex itself is wrapped in [data-hex] so it can be aria-hidden when
+   censored — preventing screen readers from announcing the value too. */
 .scalar-btn {
   display: inline-block;
   background: var(--private);
   color: var(--private);
   user-select: none;
-  border-radius: 3px;
+  border-radius: 4px;
   font-family: var(--mono);
-  font-size: 0.75rem;
-  padding: 0.1rem 0.4rem;
+  font-size: 0.78rem;
+  padding: 0.25rem 0.55rem;
   cursor: pointer;
   letter-spacing: 1px;
-  border: none;
+  border: 1px solid transparent;
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  min-height: 32px;
   word-break: break-all;
-  transition: background 0.2s, color 0.2s;
+  text-align: left;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
 }
 
-.scalar-btn.revealed {
-  background: color-mix(in srgb, var(--private) 15%, var(--surface2));
+.scalar-btn:hover {
+  border-color: var(--private);
+}
+
+.scalar-btn[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--private) 12%, var(--surface2));
   color: var(--private);
+  border-color: var(--private);
 }
 
 .scalar-btn:focus-visible {
@@ -535,9 +575,6 @@ footer {
   margin-bottom: 0.5rem;
 }
 
-/* ── Live region for screen readers ── */
-[aria-live] { /* inherits */ }
-
 /* ── Visually hidden (screen reader only) ── */
 .sr-only {
   position: absolute;
@@ -551,15 +588,257 @@ footer {
   border-width: 0;
 }
 
+/* ── Protocol picker (Exhibit 3) ── */
+.proto-picker {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem 0.85rem;
+  margin: 1rem 0 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.proto-picker legend {
+  padding: 0 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+}
+
+.proto-option {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 0.55rem;
+  row-gap: 0.1rem;
+  align-items: center;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  cursor: pointer;
+  min-height: 44px;
+}
+
+.proto-option:hover { border-color: var(--border); background: var(--surface2); }
+.proto-option:has(input:checked) {
+  border-color: var(--alice);
+  background: color-mix(in srgb, var(--alice) 8%, var(--surface));
+}
+
+.proto-option input { width: 1.1rem; height: 1.1rem; accent-color: var(--alice); }
+.proto-option span { font-weight: 600; color: var(--text); }
+.proto-option small {
+  grid-column: 2;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+/* ── Cryptographer's Lab — test vectors / transcript / benchmarks ── */
+
+.tv-row,
+.wire-line {
+  display: grid;
+  grid-template-columns: 11rem 1fr;
+  gap: 0.5rem 0.75rem;
+  align-items: baseline;
+  padding: 0.2rem 0;
+  border-bottom: 1px dashed var(--border);
+}
+
+.tv-row:last-child,
+.wire-line:last-child {
+  border-bottom: none;
+}
+
+@media (max-width: 600px) {
+  .tv-row,
+  .wire-line {
+    grid-template-columns: 1fr;
+    gap: 0.1rem;
+    padding: 0.45rem 0;
+  }
+}
+
+.tv-label {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.tv-hex,
+.wire-hex {
+  font-family: var(--mono);
+  font-size: clamp(0.7rem, 1.8vw, 0.78rem);
+  color: var(--text);
+  word-break: break-all;
+  line-height: 1.5;
+}
+
+.wire-tag {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.wire-alice .wire-hex { color: var(--alice); }
+.wire-bob .wire-hex { color: var(--bob); }
+.wire-doubleblinded .wire-hex { color: var(--double-blinded); }
+
+/* Benchmark + probe tables — share core styles, scroll on narrow screens. */
+.bench-table,
+.probe-table,
+.psi-compare {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: clamp(0.78rem, 2vw, 0.86rem);
+}
+
+.bench-table th,
+.bench-table td,
+.probe-table th,
+.probe-table td,
+.psi-compare th,
+.psi-compare td {
+  text-align: left;
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.bench-table thead th,
+.probe-table thead th,
+.psi-compare thead th {
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border-bottom: 2px solid var(--border);
+}
+
+.bench-table td.num,
+.bench-table th.num {
+  text-align: right;
+  font-family: var(--mono);
+  white-space: nowrap;
+}
+
+.bench-table .bench-section {
+  text-align: center;
+  color: var(--alice);
+  font-weight: 700;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding-top: 0.75rem;
+  border-bottom: 2px solid var(--border);
+}
+
+.probe-table .mono-cell {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.probe-table .probe-detail td {
+  padding-top: 0;
+  padding-bottom: 0.7rem;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  border-bottom: 2px solid var(--border);
+}
+
+.psi-compare-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  margin-top: 0.5rem;
+}
+
+.psi-compare {
+  min-width: 640px;
+}
+
+.psi-compare th[scope="row"] {
+  color: var(--alice);
+  font-weight: 700;
+}
+
+.psi-compare em {
+  color: var(--text-muted);
+  font-style: italic;
+  font-weight: 400;
+}
+
+.proof-list {
+  list-style: decimal inside;
+  color: var(--text);
+  font-size: clamp(0.82rem, 2vw, 0.9rem);
+  margin: 0.5rem 0;
+  padding-left: 0.25rem;
+}
+
+.proof-list li {
+  margin-bottom: 0.3rem;
+  line-height: 1.5;
+}
+
+.proof-note {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-style: italic;
+  margin-top: 0.5rem;
+}
+
+.caveat-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.caveat-list li {
+  padding: 0.55rem 0.75rem;
+  border-left: 3px solid var(--warning);
+  background: color-mix(in srgb, var(--warning) 8%, var(--surface));
+  border-radius: 0 var(--radius) var(--radius) 0;
+  font-size: clamp(0.82rem, 2vw, 0.9rem);
+  color: var(--text);
+}
+
+.caveat-list strong { color: var(--warning); }
+
+/* ── DDH pseudorandomness chart ── */
+.ddh-chart-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface2);
+  padding: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.ddh-chart {
+  width: 100%;
+  min-width: 320px;
+  height: auto;
+  display: block;
+}
+
 /* ── Reduced motion ── */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
-
-/* Backwards compat: .exhibit is used alongside role=tabpanel */
-.exhibit { display: none; }
-.exhibit.active { display: block; }

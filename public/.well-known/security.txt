@@ -1,0 +1,5 @@
+Contact: https://github.com/systemslibrarian/crypto-lab-psi-gate/issues
+Preferred-Languages: en
+Canonical: https://systemslibrarian.github.io/crypto-lab-psi-gate/.well-known/security.txt
+Policy: https://github.com/systemslibrarian/crypto-lab-psi-gate#what-can-go-wrong
+Expires: 2099-12-31T00:00:00.000Z

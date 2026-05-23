@@ -1,5 +1,10 @@
 # PSI Gate — Private Set Intersection
 
+[![CI](https://github.com/systemslibrarian/crypto-lab-psi-gate/actions/workflows/test.yml/badge.svg)](https://github.com/systemslibrarian/crypto-lab-psi-gate/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+[![Node: 20 · 22](https://img.shields.io/badge/node-20%20%7C%2022-339933?logo=node.js&logoColor=white)](./.github/workflows/test.yml)
+[![Test Vectors: PSI-GATE-v1](https://img.shields.io/badge/test_vectors-PSI--GATE--v1-blue)](./TEST_VECTORS.md)
+
 > "Whether therefore ye eat, or drink, or whatsoever ye do, do all to the glory of God."
 > — 1 Corinthians 10:31
 
@@ -59,7 +64,7 @@ Round 3 (Alice):  Compute W_j = α·Z_j.  Intersection = {a_i : Y_i ∈ {W_j}}.
 | 1 | Contact Discovery Problem | PrayerWarriors.Mobi scenario; naive vs PSI approach |
 | 2 | Protocol Walkthrough | Step-by-step with animated blinding/unblinding |
 | 3 | Live Simulator | Paste your own sets; run PSI instantly |
-| 4 | Attack Demos | Set size inflation, dictionary attack, scalar reuse, malformed-point injection |
+| 4 | Attack Demos | Set size inflation, dictionary attack, scalar reuse, malformed-point injection, malicious OPRF publication |
 | 5 | Real-World Deployments | Signal, Apple, Google, DP3T, healthcare |
 | 6 | Cryptographer's Lab | Test vectors, wire transcript, benchmarks, security argument, PSI protocol comparison |
 

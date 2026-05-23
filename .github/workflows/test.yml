@@ -31,3 +31,34 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Audit (fail on high+)
+        run: npm audit --audit-level=high
+
+  a11y:
+    name: axe-core a11y audit
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Serve dist and run axe
+        run: |
+          npx --yes serve dist -p 4173 -s -L &
+          SERVE_PID=$!
+          npx --yes wait-on -t 30000 http://localhost:4173
+          # WCAG 2.1 A + AA; --exit makes any violation fail the job.
+          npx --yes @axe-core/cli http://localhost:4173 \
+            --tags wcag2a,wcag2aa,wcag21a,wcag21aa \
+            --exit
+          kill $SERVE_PID

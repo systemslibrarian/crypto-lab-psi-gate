@@ -21,6 +21,7 @@
  *   - Set sizes are still revealed (here: |A| in the query batch).
  *   - Dictionary attacks still apply if Alice's element domain is small.
  */
+import { sha256 } from '@noble/hashes/sha2.js';
 import {
   type GroupPoint,
   type Scalar,
@@ -28,7 +29,6 @@ import {
   hashToPoint,
   scalarMul,
   scalarInverse,
-  pointToHex,
 } from './group.js';
 
 export interface OPRFKeyMaterial {
@@ -62,15 +62,29 @@ export interface OPRFResult {
 }
 
 /**
+ * Domain separation prefix for the H₂ hash in this OPRF instance.
+ * Mixed in front of the ristretto encoding before hashing so PRF tags
+ * cannot be reused as hash outputs from another protocol on the same group.
+ */
+const OPRF_H2_DST = new TextEncoder().encode('PSI-GATE-v1-OPRF-H2');
+
+/**
  * H₂: ristretto point → 32-byte hex tag.
  *
- * In production this should be a domain-separated cryptographic hash
- * (e.g., SHA-512 with a fixed prefix). For this demo we use the canonical
- * encoding directly — it's still a one-way function of the input element
- * under DDH, which is sufficient for the privacy argument.
+ * Domain-separated SHA-256 over (DST || pointBytes). The DST prevents tag
+ * reuse across protocols on the same group; SHA-256 collapses the algebraic
+ * structure (every output is a uniform 256-bit string, indistinguishable
+ * from random under ROM) so the published `F` set leaks no group structure
+ * beyond what a generic random function would.
  */
 function prfTag(p: GroupPoint): string {
-  return pointToHex(p);
+  const input = new Uint8Array(OPRF_H2_DST.length + p.length);
+  input.set(OPRF_H2_DST, 0);
+  input.set(p, OPRF_H2_DST.length);
+  const digest = sha256(input);
+  let hex = '';
+  for (const b of digest) hex += b.toString(16).padStart(2, '0');
+  return hex;
 }
 
 /**
@@ -122,8 +136,8 @@ export function oprfAliceRound3(
   const alphaInv = scalarInverse(round1.aliceScalar);
   const intersection: string[] = [];
   for (let i = 0; i < aliceSet.length; i++) {
-    const unblinded = scalarMul(alphaInv, round2.evaluatedElements[i]);
-    if (bobPublished.has(prfTag(unblinded))) intersection.push(aliceSet[i]);
+    const unblinded = scalarMul(alphaInv, round2.evaluatedElements[i]!);
+    if (bobPublished.has(prfTag(unblinded))) intersection.push(aliceSet[i]!);
   }
   return {
     intersection,

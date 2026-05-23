@@ -92,15 +92,15 @@ describe('tracePSI canonical test vector', () => {
     // Y_i corresponds to A[i]; for elements in the intersection, Y_i should
     // equal W_j for the matching b_j.
     // bob: A[1], B[0]; mom: A[2], B[1]
-    expect(pointToHex(trace.wireB2A_Y[1])).toBe(pointToHex(trace.computedW[0]));
-    expect(pointToHex(trace.wireB2A_Y[2])).toBe(pointToHex(trace.computedW[1]));
+    expect(pointToHex(trace.wireB2A_Y[1]!)).toBe(pointToHex(trace.computedW[0]!));
+    expect(pointToHex(trace.wireB2A_Y[2]!)).toBe(pointToHex(trace.computedW[1]!));
   });
 
   it('non-matching indices produce non-matching Y/W (no false positives)', () => {
     const trace = tracePSI(A, B, ALPHA, BETA);
     const wHex = new Set(trace.computedW.map(pointToHex));
     // A[0] = alice — not in B. Its Y must NOT appear in W.
-    expect(wHex.has(pointToHex(trace.wireB2A_Y[0]))).toBe(false);
+    expect(wHex.has(pointToHex(trace.wireB2A_Y[0]!))).toBe(false);
   });
 });
 

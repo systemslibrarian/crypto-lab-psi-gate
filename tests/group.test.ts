@@ -82,4 +82,21 @@ describe('group operations on ristretto255', () => {
       expect(isValidPoint(p)).toBe(true);
     }
   });
+
+  it('isValidPoint rejects wrong-length buffers', () => {
+    expect(isValidPoint(new Uint8Array(0))).toBe(false);
+    expect(isValidPoint(new Uint8Array(31))).toBe(false);
+    expect(isValidPoint(new Uint8Array(33))).toBe(false);
+    expect(isValidPoint(new Uint8Array(64))).toBe(false);
+  });
+
+  it('scalarInverse: α⁻¹ · (α · P) == P for known α from seed', () => {
+    // Deterministic round-trip — catches regressions in scalarInverse independent
+    // of randomScalar quality.
+    const alpha = scalarFromSeed('0000000000000000000000000000000000000000000000000000000000000007');
+    const alphaInv = scalarInverse(alpha);
+    const P = hashToPoint('seed-inverse-test');
+    const Q = scalarMul(alphaInv, scalarMul(alpha, P));
+    expect(pointEqual(P, Q)).toBe(true);
+  });
 });

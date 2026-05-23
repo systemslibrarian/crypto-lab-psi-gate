@@ -4,6 +4,7 @@ import {
   simulateDictionaryAttack,
   simulateReplayAttack,
   simulateMalformedPointInjection,
+  simulateMaliciousOprfBob,
 } from '../src/attacks.js';
 import { randomScalar, hashToPoint, scalarMul, pointToHex } from '../src/group.js';
 
@@ -65,9 +66,9 @@ describe('attack simulations', () => {
     // (~4% of random strings happen to be valid ristretto encodings),
     // so we assert behaviour on the deterministic ones only.
     const byLabel = Object.fromEntries(probes.map((p) => [p.label, p]));
-    expect(byLabel['Identity element O (all-zero encoding)'].accepted).toBe(false);
-    expect(byLabel['Non-canonical encoding (high bit set)'].accepted).toBe(false);
-    expect(byLabel['Order-2 point (raw Curve25519 torsion)'].accepted).toBe(false);
+    expect(byLabel['Identity element O (all-zero encoding)']!.accepted).toBe(false);
+    expect(byLabel['Non-canonical encoding (high bit set)']!.accepted).toBe(false);
+    expect(byLabel['Order-2 point (raw Curve25519 torsion)']!.accepted).toBe(false);
   });
 
   it('malformed point injection: random-bytes acceptance rate is below 10%', () => {
@@ -82,5 +83,28 @@ describe('attack simulations', () => {
     }
     // 10% upper bound is generous; observed empirical rate is ~4%.
     expect(accepted / TRIALS).toBeLessThan(0.15);
+  });
+
+  it('malicious OPRF Bob: inflated F yields false positives Alice cannot detect', () => {
+    const A = ['alpha@x', 'beta@x', 'gamma@x'];
+    const realB = ['delta@x']; // nothing in common with A
+    const phantom = ['alpha@x', 'beta@x']; // Bob pretends to have these
+    const r = simulateMaliciousOprfBob(A, realB, phantom, []);
+    expect(r.honest.intersection).toEqual([]);
+    expect(r.inflated.intersection.sort()).toEqual(['alpha@x', 'beta@x']);
+    expect(r.inflated.falsePositives.sort()).toEqual(['alpha@x', 'beta@x']);
+    // |F| of the inflated set MUST exceed |F| of the real set — that's the leak
+    // Alice could observe IF she had pinned an out-of-band commitment.
+    expect(r.inflated.publishedSize).toBeGreaterThan(r.honest.publishedSize);
+  });
+
+  it('malicious OPRF Bob: deflated F yields silent false negatives', () => {
+    const A = ['alpha@x', 'beta@x'];
+    const realB = ['alpha@x', 'beta@x', 'extra@x'];
+    const drops = ['beta@x']; // Bob really has it, just doesn't publish its tag
+    const r = simulateMaliciousOprfBob(A, realB, [], drops);
+    expect(r.honest.intersection.sort()).toEqual(['alpha@x', 'beta@x']);
+    expect(r.deflated.intersection.sort()).toEqual(['alpha@x']);
+    expect(r.deflated.falseNegatives).toEqual(['beta@x']);
   });
 });

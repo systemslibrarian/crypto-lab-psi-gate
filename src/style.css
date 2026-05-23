@@ -387,6 +387,14 @@ pre {
 .status.error { color: var(--private); }
 .status.info  { color: var(--alice); }
 
+.copy-status {
+  font-size: 0.8rem;
+  color: var(--match);
+  font-family: var(--mono);
+  transition: opacity 200ms ease;
+}
+.copy-status:empty { opacity: 0; }
+
 /* ── Scalar censor (button) ──
    Censored state: text + bg share the same color so the hex value is
    visually hidden. Revealed state: distinct text/bg with AA contrast.

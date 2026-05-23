@@ -68,14 +68,36 @@ export interface PSIResult {
   bobLearnedAliceSize: number;
 }
 
-/** Fisher-Yates shuffle using crypto.getRandomValues only. */
+/**
+ * Sample a uniform integer in [0, range) using rejection sampling.
+ * Plain `getUint32 % range` is biased whenever range does not divide 2^32;
+ * we discard samples above the largest multiple of `range` that fits in
+ * a u32 so every output in [0, range) is equally likely.
+ */
+function uniformIntBelow(range: number): number {
+  if (range <= 0 || !Number.isInteger(range)) {
+    throw new Error('uniformIntBelow: range must be a positive integer');
+  }
+  if (range === 1) return 0;
+  const buf = new Uint8Array(4);
+  const view = new DataView(buf.buffer);
+  // Largest multiple of `range` strictly less than 2^32.
+  const limit = Math.floor(0x1_0000_0000 / range) * range;
+  for (;;) {
+    crypto.getRandomValues(buf);
+    const r = view.getUint32(0, false);
+    if (r < limit) return r % range;
+  }
+}
+
+/** Fisher-Yates shuffle using crypto.getRandomValues with rejection sampling. */
 function cryptoShuffle<T>(arr: T[]): T[] {
   const out = [...arr];
   for (let i = out.length - 1; i > 0; i--) {
-    const buf = new Uint8Array(4);
-    crypto.getRandomValues(buf);
-    const j = new DataView(buf.buffer).getUint32(0, false) % (i + 1);
-    [out[i], out[j]] = [out[j], out[i]];
+    const j = uniformIntBelow(i + 1);
+    const tmp = out[i]!;
+    out[i] = out[j]!;
+    out[j] = tmp;
   }
   return out;
 }
@@ -137,8 +159,8 @@ export function aliceRound3(
 
   const intersection: string[] = [];
   for (let i = 0; i < doubleBlindedAliceElements.length; i++) {
-    if (wSet.has(pointToHex(doubleBlindedAliceElements[i]))) {
-      const orig = aliceOriginalMapping.get(pointToHex(blindedElements[i]));
+    if (wSet.has(pointToHex(doubleBlindedAliceElements[i]!))) {
+      const orig = aliceOriginalMapping.get(pointToHex(blindedElements[i]!));
       if (orig !== undefined) intersection.push(orig);
     }
   }
@@ -178,7 +200,7 @@ export function tracePSI(
   const wHexSet = new Set(computedW.map(pointToHex));
   const intersection: string[] = [];
   for (let i = 0; i < wireB2A_Y.length; i++) {
-    if (wHexSet.has(pointToHex(wireB2A_Y[i]))) intersection.push(aliceSet[i]);
+    if (wHexSet.has(pointToHex(wireB2A_Y[i]!))) intersection.push(aliceSet[i]!);
   }
   return {
     aliceSet,

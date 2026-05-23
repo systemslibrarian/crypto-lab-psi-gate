@@ -67,8 +67,8 @@ self.addEventListener('message', (e: MessageEvent<Request>) => {
         const { n, m, iter } = req.payload;
         const a = Array.from({ length: n }, (_, i) => `alice-${i}@example.com`);
         const b = Array.from({ length: m }, (_, j) => `bob-${j}@example.com`);
-        a[0] = b[0];
-        if (a.length > 1 && b.length > 1) a[1] = b[1];
+        a[0] = b[0]!;
+        if (a.length > 1 && b.length > 1) a[1] = b[1]!;
         const r = bench(iter, () => { runPSI(a, b); });
         reply({ id: req.id, ok: true, result: r });
         return;
@@ -96,14 +96,17 @@ self.addEventListener('message', (e: MessageEvent<Request>) => {
         for (let i = 0; i < req.payload.count; i++) {
           const H = hashToPoint('ddh-bench-' + i);
           const Y = scalarMul(alpha, H);
-          for (let j = 0; j < Y.length; j++) histogram[Y[j]]++;
+          for (let j = 0; j < Y.length; j++) {
+            const byte = Y[j]!;
+            histogram[byte] = histogram[byte]! + 1;
+          }
           totalBytes += Y.length;
         }
         // Chi-square statistic against the uniform 1/256 expectation.
         const expected = totalBytes / 256;
         let chiSq = 0;
         for (let v = 0; v < 256; v++) {
-          const diff = histogram[v] - expected;
+          const diff = histogram[v]! - expected;
           chiSq += (diff * diff) / expected;
         }
         const histArr: number[] = Array.from(histogram);

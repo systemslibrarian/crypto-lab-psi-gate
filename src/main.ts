@@ -19,6 +19,7 @@ import {
   simulateDictionaryAttack,
   simulateReplayAttack,
   simulateMalformedPointInjection,
+  simulateMaliciousOprfBob,
 } from './attacks.js';
 import { runOPRFPSI } from './oprf-psi.js';
 import { callWorker, workerSupported } from './worker-client.js';
@@ -96,7 +97,7 @@ function initTabs(): void {
       else if (e.key === 'ArrowLeft') next = (i - 1 + tabs.length) % tabs.length;
       else if (e.key === 'Home') next = 0;
       else if (e.key === 'End') next = tabs.length - 1;
-      if (next !== -1) { e.preventDefault(); activateTab(tabs[next]); }
+      if (next !== -1) { e.preventDefault(); activateTab(tabs[next]!); }
     });
   });
 }
@@ -242,7 +243,7 @@ function initExhibit2(): void {
         <div class="set-label alice" style="margin-top:0.75rem">Blinded elements X_i = α · H(a_i) sent to Bob:</div>
         <ul class="element-list">
           ${r1.blindedElements
-            .map((pt, i) => `<li class="blinded" title="Blinded(${esc(aliceSet[i])})">X_${i+1} = ${truncateHex(pointToHex(pt))}</li>`)
+            .map((pt, i) => `<li class="blinded" title="Blinded(${esc(aliceSet[i]!)})">X_${i+1} = ${truncateHex(pointToHex(pt))}</li>`)
             .join('')}
         </ul>
         <div class="status info">Bob sees 3 random-looking curve points. He cannot recover Alice's emails.</div>`;
@@ -344,7 +345,7 @@ function initExhibit2(): void {
   ];
 
   function render(): void {
-    panel.innerHTML = steps[step]();
+    panel.innerHTML = steps[step]!();
     stepCounter.textContent = `Step ${step + 1} / ${steps.length}`;
     prevBtn.disabled = step === 0;
     nextBtn.disabled = step === steps.length - 1;
@@ -598,6 +599,79 @@ function initExhibit4(): void {
         <div class="warning-box">${esc(ristrettoVerdict)}</div>
       </div>`;
   });
+
+  // --- Attack 5: Malicious OPRF Bob lies about his published set ---
+  const a5Btn = document.getElementById('e4-a5-run') as HTMLButtonElement;
+  const a5Output = document.getElementById('e4-a5-output') as HTMLDivElement;
+
+  a5Btn.addEventListener('click', () => {
+    const aliceQuery = [
+      'pastor@church.org',
+      'celebrity@example.com',
+      'friend.alex@email.com',
+      'mom@example.com',
+    ];
+    const bobRealSet = [
+      'pastor@church.org',
+      'friend.alex@email.com',
+      'mom@example.com',
+      'random.user@example.com',
+    ];
+    const phantomAdds = ['celebrity@example.com']; // Bob didn't have this; pretends to
+    const silentDrops = ['mom@example.com'];       // Bob really has this; lies that he doesn't
+
+    const result = simulateMaliciousOprfBob(aliceQuery, bobRealSet, phantomAdds, silentDrops);
+
+    const fmt = (xs: string[]): string =>
+      xs.length === 0 ? '<em>(empty)</em>' : xs.map((x) => `<code>${esc(x)}</code>`).join(', ');
+
+    a5Output.innerHTML = `
+      <div class="result-box">
+        <div class="info-grid">
+          <span class="info-label">Alice's query A:</span>
+          <span class="info-value">${fmt(aliceQuery)}</span>
+          <span class="info-label">Bob's real set B:</span>
+          <span class="info-value">${fmt(bobRealSet)}</span>
+          <span class="info-label">Phantom tags Bob adds:</span>
+          <span class="info-value">${fmt(phantomAdds)}</span>
+          <span class="info-label">Real tags Bob drops:</span>
+          <span class="info-value">${fmt(silentDrops)}</span>
+        </div>
+
+        <table class="probe-table" style="margin-top:0.75rem" aria-label="Honest vs malicious OPRF Bob outcomes">
+          <thead>
+            <tr>
+              <th scope="col">Bob behaviour</th>
+              <th scope="col">|F|</th>
+              <th scope="col">Alice's intersection</th>
+              <th scope="col">Tampering visible to Alice?</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Honest</td>
+              <td class="num">${result.honest.publishedSize}</td>
+              <td class="mono-cell">{${result.honest.intersection.map(esc).join(', ')}}</td>
+              <td class="info-value match">N/A (baseline)</td>
+            </tr>
+            <tr>
+              <td>Inflated F (added phantoms)</td>
+              <td class="num">${result.inflated.publishedSize}</td>
+              <td class="mono-cell">{${result.inflated.intersection.map(esc).join(', ')}}</td>
+              <td class="info-value private">✗ no — false positives indistinguishable from honest matches</td>
+            </tr>
+            <tr>
+              <td>Deflated F (dropped real tags)</td>
+              <td class="num">${result.deflated.publishedSize}</td>
+              <td class="mono-cell">{${result.deflated.intersection.map(esc).join(', ')}}</td>
+              <td class="info-value private">✗ no — silent false negatives, Alice cannot prove the omission</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="warning-box">${esc(result.warningMessage)}</div>
+      </div>`;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -685,6 +759,35 @@ function initExhibit6(): void {
     const beta = scalarFromSeed(TV_BETA_SEED);
     const trace = tracePSI(TV_ALICE, TV_BOB, alpha, beta);
 
+    // Machine-readable form of the same trace — copied verbatim to clipboard.
+    const traceJson = {
+      suite: 'PSI-GATE-v1',
+      group: 'ristretto255',
+      inputs: {
+        A: trace.aliceSet,
+        B: trace.bobSet,
+        alphaSeed: TV_ALPHA_SEED,
+        betaSeed: TV_BETA_SEED,
+      },
+      scalars: {
+        alpha: pointToHex(trace.aliceScalar),
+        beta: pointToHex(trace.bobScalar),
+      },
+      hashed: {
+        H_alice: trace.hashedAlice.map(pointToHex),
+        H_bob: trace.hashedBob.map(pointToHex),
+      },
+      wire: {
+        X: trace.wireA2B_X.map(pointToHex),
+        Y: trace.wireB2A_Y.map(pointToHex),
+        Z: trace.wireB2A_Z.map(pointToHex),
+      },
+      local: {
+        W: trace.computedW.map(pointToHex),
+      },
+      intersection: [...trace.intersection].sort(),
+    };
+
     const row = (label: string, hex: string): string => `
       <div class="tv-row">
         <span class="tv-label">${esc(label)}</span>
@@ -692,10 +795,10 @@ function initExhibit6(): void {
       </div>`;
 
     const hashRows = trace.aliceSet
-      .map((el, i) => row(`H(a${i + 1}) — "${el}"`, pointToHex(trace.hashedAlice[i])))
+      .map((el, i) => row(`H(a${i + 1}) — "${el}"`, pointToHex(trace.hashedAlice[i]!)))
       .join('') +
       trace.bobSet
-        .map((el, i) => row(`H(b${i + 1}) — "${el}"`, pointToHex(trace.hashedBob[i])))
+        .map((el, i) => row(`H(b${i + 1}) — "${el}"`, pointToHex(trace.hashedBob[i]!)))
         .join('');
 
     const wireRows =
@@ -735,7 +838,31 @@ function initExhibit6(): void {
         Expected intersection: {${trace.intersection.join(', ')}} —
         any conforming DH-PSI/ristretto255 implementation MUST produce
         the same X, Y, Z, W byte strings given these inputs.
+      </div>
+      <div style="margin-top:0.75rem;display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center">
+        <button id="e6-tv-copy" type="button" class="btn"
+          aria-label="Copy the test vector trace to the clipboard as JSON">Copy as JSON</button>
+        <span id="e6-tv-copy-status" class="copy-status" role="status" aria-live="polite"></span>
       </div>`;
+
+    const copyBtn = document.getElementById('e6-tv-copy') as HTMLButtonElement | null;
+    const copyStatus = document.getElementById('e6-tv-copy-status') as HTMLSpanElement | null;
+    if (copyBtn && copyStatus) {
+      copyBtn.addEventListener('click', async () => {
+        const json = JSON.stringify(traceJson, null, 2);
+        try {
+          await navigator.clipboard.writeText(json);
+          copyStatus.textContent = `Copied ${json.length.toLocaleString()} bytes.`;
+        } catch {
+          // Fallback when clipboard API is unavailable (HTTP origin, perms denied).
+          copyStatus.textContent = 'Clipboard blocked — see console for JSON.';
+          // Surface the data anyway so reviewers still have a path.
+          // eslint-disable-next-line no-console
+          console.log(json);
+        }
+        setTimeout(() => { copyStatus.textContent = ''; }, 3000);
+      });
+    }
 
     // --- Transcript view (uses same trace) --------------------------------
     const dump = (bytes: Uint8Array): string =>
@@ -858,7 +985,7 @@ function initExhibit6(): void {
         for (const [n, m] of [[10, 10], [100, 100]] as Array<[number, number]>) {
           const a = Array.from({ length: n }, (_, i) => `alice-${i}@example.com`);
           const b = Array.from({ length: m }, (_, j) => `bob-${j}@example.com`);
-          a[0] = b[0]; if (a.length > 1 && b.length > 1) a[1] = b[1];
+          a[0] = b[0]!; if (a.length > 1 && b.length > 1) a[1] = b[1]!;
           psiRows.push(localBench(`PSI ${n} × ${m}`, n >= 100 ? 4 : 6, () => { runPSI(a, b); }));
         }
       }
@@ -1170,6 +1297,18 @@ appEl.innerHTML = `
     </p>
     <button id="e4-a4-run" type="button" class="btn danger">Probe Input Validation</button>
     <div id="e4-a4-output" aria-live="polite" aria-atomic="true"></div>
+  </div>
+
+  <div class="card">
+    <h3>Attack 5 — Malicious OPRF Bob lies about his published set</h3>
+    <p>
+      In OPRF-PSI, Bob publishes a set of PRF tags F = { H₂(k·H(b)) } and
+      Alice membership-tests against it. The protocol gives NO integrity on F:
+      Bob can add phantom tags (false positives) or drop real ones (silent
+      false negatives) and Alice cannot tell from the OPRF transcript alone.
+    </p>
+    <button id="e4-a5-run" type="button" class="btn danger">Simulate Lying Bob</button>
+    <div id="e4-a5-output" aria-live="polite" aria-atomic="true"></div>
   </div>
 </section>
 

@@ -90,13 +90,22 @@ export function isValidPoint(bytes: Uint8Array): boolean {
 }
 
 /**
+ * Domain separation tag for hashToCurve. Tag any output of this PSI build
+ * so it cannot be confused with hash-to-curve outputs from another protocol
+ * sharing the same ristretto255 group (e.g., OPAQUE, VOPRF). Versioned so a
+ * future protocol bump doesn't collide with this published test vector set.
+ */
+export const HASH_TO_CURVE_DST = 'PSI-GATE-v1-RISTRETTO255_XMD:SHA-512_R_';
+
+/**
  * Hash an arbitrary string to a ristretto255 group point.
- * Uses ristretto255_hasher.hashToCurve (RFC 9380 compliant) and
- * returns the canonical 32-byte ristretto encoding (RFC 9496).
+ * Uses ristretto255_hasher.hashToCurve (RFC 9380 compliant) with a
+ * domain-separation tag and returns the canonical 32-byte ristretto
+ * encoding (RFC 9496).
  */
 export function hashToPoint(element: string): GroupPoint {
   const bytes = new TextEncoder().encode(element);
-  const wrapper: any = ristretto255_hasher.hashToCurve(bytes);
+  const wrapper: any = ristretto255_hasher.hashToCurve(bytes, { DST: HASH_TO_CURVE_DST });
   return wrapper.toBytes() as Uint8Array;
 }
 

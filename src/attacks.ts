@@ -12,6 +12,12 @@ import {
   isValidPoint,
 } from './group.js';
 import { runPSI } from './psi.js';
+import {
+  oprfBobSetup,
+  oprfAliceRound1,
+  oprfBobRound2,
+  oprfAliceRound3,
+} from './oprf-psi.js';
 
 // ---------------------------------------------------------------------------
 // Attack 1 — Set Size Inflation
@@ -282,4 +288,95 @@ export function simulateMalformedPointInjection(): {
         `The implementation is missing critical input validation.`;
 
   return { probes, ristrettoVerdict };
+}
+
+// ---------------------------------------------------------------------------
+// Attack 5 — Malicious OPRF Bob: lying about his published set
+// ---------------------------------------------------------------------------
+
+/**
+ * MALICIOUS BOB in OPRF-PSI: tamper with the published PRF tag set F.
+ *
+ * In OPRF-PSI Bob publishes F = { H₂(k·H(b)) : b ∈ B } and then evaluates the
+ * OPRF on Alice's query. The protocol gives no integrity guarantee on F itself:
+ *
+ *   - Adding tags: Bob can compute and publish H₂(k·H(x)) for any x he chooses,
+ *     including elements not in his real set. Alice's query for x will "match"
+ *     and she will believe Bob has x.
+ *   - Omitting tags: Bob can simply drop tags for elements in his real set.
+ *     Alice's query for those will not match — silent false negatives.
+ *
+ * Mitigations require pinning F out of band: a signed commitment (Merkle root
+ * with proof of inclusion), a hash transparency log, or a TEE-attested
+ * publication. None of those are part of the protocol itself.
+ */
+export function simulateMaliciousOprfBob(
+  aliceSet: string[],
+  bobRealSet: string[],
+  phantomAdds: string[],
+  silentDrops: string[]
+): {
+  honest: { intersection: string[]; publishedSize: number };
+  inflated: { intersection: string[]; publishedSize: number; falsePositives: string[] };
+  deflated: { intersection: string[]; publishedSize: number; falseNegatives: string[] };
+  warningMessage: string;
+} {
+  // Reuse the same OPRF key across the three runs so the attack isolates the
+  // tamper-with-F variable rather than confounding it with a key change.
+  const honestBob = oprfBobSetup(bobRealSet);
+  const k = honestBob.bobKey;
+
+  const honestQuery = oprfAliceRound1(aliceSet);
+  const honestEval = oprfBobRound2(honestQuery, k);
+  const honestResult = oprfAliceRound3(aliceSet, honestQuery, honestEval, honestBob.publishedSet);
+
+  // Inflated F: Bob adds tags for elements he doesn't actually have.
+  const inflatedFull = oprfBobSetup([...bobRealSet, ...phantomAdds], k);
+  const inflatedQuery = oprfAliceRound1(aliceSet);
+  const inflatedEval = oprfBobRound2(inflatedQuery, k);
+  const inflatedResult = oprfAliceRound3(
+    aliceSet, inflatedQuery, inflatedEval, inflatedFull.publishedSet
+  );
+  const realBobSetS = new Set(bobRealSet);
+  const falsePositives = inflatedResult.intersection.filter((el) => !realBobSetS.has(el));
+
+  // Deflated F: Bob drops tags for elements he really does have.
+  const deflatedRealSet = bobRealSet.filter((el) => !silentDrops.includes(el));
+  const deflatedBob = oprfBobSetup(deflatedRealSet, k);
+  const deflatedQuery = oprfAliceRound1(aliceSet);
+  const deflatedEval = oprfBobRound2(deflatedQuery, k);
+  const deflatedResult = oprfAliceRound3(
+    aliceSet, deflatedQuery, deflatedEval, deflatedBob.publishedSet
+  );
+  const expectedIntersection = aliceSet.filter((el) => realBobSetS.has(el));
+  const deflatedFound = new Set(deflatedResult.intersection);
+  const falseNegatives = expectedIntersection.filter((el) => !deflatedFound.has(el));
+
+  const warningMessage =
+    `Honest Bob: |F| = ${honestBob.publishedSet.size}, Alice sees intersection of size ` +
+    `${honestResult.intersection.length}.  ` +
+    `Inflated Bob added ${phantomAdds.length} phantom tag(s) → Alice now sees ` +
+    `${falsePositives.length} false positive(s): {${falsePositives.join(', ') || '∅'}}.  ` +
+    `Deflated Bob dropped ${silentDrops.length} real tag(s) → Alice silently misses ` +
+    `${falseNegatives.length} match(es): {${falseNegatives.join(', ') || '∅'}}.  ` +
+    `OPRF-PSI provides NO integrity on F — Alice must pin it out-of-band ` +
+    `(signed commitment / transparency log / TEE attestation).`;
+
+  return {
+    honest: {
+      intersection: [...honestResult.intersection].sort(),
+      publishedSize: honestBob.publishedSet.size,
+    },
+    inflated: {
+      intersection: [...inflatedResult.intersection].sort(),
+      publishedSize: inflatedFull.publishedSet.size,
+      falsePositives,
+    },
+    deflated: {
+      intersection: [...deflatedResult.intersection].sort(),
+      publishedSize: deflatedBob.publishedSet.size,
+      falseNegatives,
+    },
+    warningMessage,
+  };
 }

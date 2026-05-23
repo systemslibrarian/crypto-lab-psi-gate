@@ -1,0 +1,53 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`PSI-GATE-v1 canonical test vectors > DH-PSI trace bytes are stable (snapshot) 1`] = `
+{
+  "H_alice": [
+    "a065fed2561a32fa5d398671bbec019264899edf84d068c15e6b7ea3c45e9768",
+    "aabc0b23143f1134ae91cc55ba6a1636dc7cea43cf1d19b9522203d8c64ec817",
+    "9c4989cbd998ba6adfbceb380ffb076e1ffced9ba9eea68c2f47e6fa984d7801",
+  ],
+  "H_bob": [
+    "aabc0b23143f1134ae91cc55ba6a1636dc7cea43cf1d19b9522203d8c64ec817",
+    "9c4989cbd998ba6adfbceb380ffb076e1ffced9ba9eea68c2f47e6fa984d7801",
+    "a268f902bf950fa05d657abef1d41a39962804c5fd7d9694c8370caeeffa1f56",
+  ],
+  "W": [
+    "501624bf6cc46293e150b2a0192cfa8872f606e0608de02fda1bf6875cde9a21",
+    "a4269c9c60351558ff9f2a48cb8705faa319739e0d0c647fe0dba2bb56036e78",
+    "b8dbfbeea47d0478aad94f57ccb582a55811689ce9a5fddade6524bf773c2918",
+  ],
+  "X": [
+    "90e62d0fc3810702591256866c63d79e0e9c7f00f39b51834487715b71fb8443",
+    "5c8abe9f33ef4d8e2b87d502ab93aff202b2851e41e0c429c568bd0621559348",
+    "ce5c32a65c19bb5046db44a47623bfb499b8cfb2316c62bb51a739c5b17f875e",
+  ],
+  "Y": [
+    "046a9935ec7b0f99a4d71460173abfbcee28826a1616476b7e2b15a14e1d192b",
+    "501624bf6cc46293e150b2a0192cfa8872f606e0608de02fda1bf6875cde9a21",
+    "a4269c9c60351558ff9f2a48cb8705faa319739e0d0c647fe0dba2bb56036e78",
+  ],
+  "Z": [
+    "1ca02e3a943522609225cbb80658cba386ace645f002db5a3c05533f4a976921",
+    "988bd19413b22a2f648873598c09cca090fa292723ad55a92a6fcc5c6686dc1f",
+    "cc3beab3bb8ff2a367cdaf05433c312c5cdbbacb0de2f0ea6b5ca0e7aa559a41",
+  ],
+  "alpha": "0000000000000000000000000000000000000000000000000000000000000007",
+  "beta": "000000000000000000000000000000000000000000000000000000000000000b",
+  "intersection": [
+    "bob@example.com",
+    "mom@example.com",
+  ],
+}
+`;
+
+exports[`PSI-GATE-v1 canonical test vectors > OPRF-PSI PRF tags are stable (snapshot) 1`] = `
+{
+  "bobKey": "000000000000000000000000000000000000000000000000000000000000000d",
+  "publishedTagsSorted": [
+    "d1498f668e0a09acdcded4faea70f23c75d26b0b25c75370e0e3a9702cd99709",
+    "d489aedc9cc6e741d7659cc3bc431f5b416c5ea1728fd2278052f870a9253ef1",
+    "f6a3d5d406a4b4df85031f0a09c54793c82256742a6be544b41fe70508af65df",
+  ],
+}
+`;

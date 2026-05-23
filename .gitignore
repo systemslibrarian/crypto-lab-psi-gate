@@ -1,0 +1,16 @@
+# Dependencies — installed via `npm ci`, never committed.
+node_modules/
+
+# Build output — produced fresh on every CI / Pages deploy.
+dist/
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local logs and dotenvs
+*.log
+.env
+.env.local

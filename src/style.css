@@ -55,7 +55,10 @@
 }
 
 html {
-  font-size: 16px;
+  /* 100% (not a fixed px) so the root scales with the user's browser
+     font-size preference — WCAG 1.4.4 Resize Text. rem-based sizing below
+     then honours that preference everywhere. */
+  font-size: 100%;
   scroll-behavior: smooth;
   -webkit-text-size-adjust: 100%;
 }
@@ -104,21 +107,31 @@ body {
   padding: 1rem;
 }
 
-/* ── Header ── */
-header {
+/* Anchor / focus jumps (skip link → #main-content) must clear the sticky
+   Crypto Lab topbar, otherwise the landing target hides beneath it. */
+#main-content,
+[role="tabpanel"] {
+  scroll-margin-top: 4.5rem;
+}
+
+/* ── Page intro (NOT a <header> — the sticky Crypto Lab topbar is the page's
+      single `banner` landmark; a second one would duplicate it). ── */
+.app-header {
   text-align: center;
   padding: 2rem 1rem 1.25rem;
   border-bottom: 1px solid var(--border);
   margin-bottom: 1.5rem;
+  /* Keep the h1 clear of the sticky topbar when focus/anchor lands here. */
+  scroll-margin-top: 4.5rem;
 }
 
-header h1 {
+.app-header h1 {
   font-size: clamp(1.5rem, 5vw, 2rem);
   letter-spacing: -0.5px;
   color: var(--alice);
 }
 
-header p {
+.app-header p {
   color: var(--text-muted);
   max-width: 600px;
   margin: 0.5rem auto 0;
@@ -839,6 +852,54 @@ footer {
   min-width: 320px;
   height: auto;
   display: block;
+}
+
+/* ── Horizontal-scroll wrapper for dynamically-rendered tables ──
+   `body` sets overflow-x:hidden to kill stray horizontal page scroll, which
+   means a table wider than the viewport would be *clipped* (lost content) on
+   a phone. Wrapping each data table in this scroller keeps every column
+   reachable. tabindex=0 in the markup makes it scrollable by keyboard too
+   (WCAG 2.1.1). */
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table-scroll:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ── Windows High Contrast Mode / forced colors ──
+   Custom-property colors are ignored by the OS palette here, so guarantee
+   that interactive boundaries and focus stay visible against system colors,
+   and keep the data-viz chart legible. */
+@media (forced-colors: active) {
+  .btn,
+  [role="tab"],
+  textarea,
+  .scalar-btn,
+  .card,
+  .result-box,
+  .proto-option {
+    border: 1px solid ButtonBorder;
+  }
+  [role="tab"][aria-selected="true"] {
+    border-bottom: 3px solid Highlight;
+  }
+  :focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+  /* Preserve the histogram's bar fills and reference line so they stay
+     distinguishable instead of collapsing to one system color. Chart TEXT is
+     deliberately left out so labels adopt the user's system foreground and
+     stay readable against the forced background. */
+  .ddh-chart rect,
+  .ddh-chart line {
+    forced-color-adjust: none;
+  }
 }
 
 /* ── Reduced motion ── */

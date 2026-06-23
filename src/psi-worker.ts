@@ -77,9 +77,12 @@ self.addEventListener('message', (e: MessageEvent<Request>) => {
         const { op, iter } = req.payload;
         const fixedPoint = hashToPoint('benchmark');
         const fixedScalar = randomScalar();
+        // Distinct, non-secret inputs via a counter (not Math.random) so every
+        // iteration hashes a fresh string without pulling in a non-CSPRNG.
+        let hashCounter = 0;
         const fn =
           op === 'hashToPoint'
-            ? () => { hashToPoint('bench-' + Math.random()); }
+            ? () => { hashToPoint('bench-' + hashCounter++); }
             : op === 'scalarMul'
             ? () => { scalarMul(fixedScalar, fixedPoint); }
             : () => { randomScalar(); };

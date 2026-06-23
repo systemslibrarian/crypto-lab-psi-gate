@@ -144,7 +144,7 @@ Two interoperating protocols are implemented and can be toggled in Exhibit 3:
 ## Testing
 
 ```
-npm test          # Vitest run (26 tests: group ops, DH-PSI, OPRF-PSI, attacks, test vectors)
+npm test          # Vitest run (32 tests: group ops, DH-PSI, OPRF-PSI, attacks, test vectors)
 npm run test:watch
 ```
 

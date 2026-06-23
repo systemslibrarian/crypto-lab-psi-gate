@@ -393,7 +393,19 @@ function initExhibit3(): void {
     'app.user@example.com',
   ].join('\n');
 
-  runBtn.addEventListener('click', () => {
+  // Per-run cancellation: a fresh click supersedes any run still in flight so
+  // rapid re-clicks (or a huge pasted set) can't queue up behind each other.
+  let inFlight: AbortController | null = null;
+
+  // Both runPSI and runOPRFPSI return this shape; the worker echoes it back.
+  type SimResult = {
+    intersection: string[];
+    intersectionSize: number;
+    aliceLearnedBobSize: number;
+    bobLearnedAliceSize: number;
+  };
+
+  runBtn.addEventListener('click', async () => {
     const aliceSet = aliceTa.value.split('\n').map((s) => s.trim()).filter(Boolean);
     const bobSet = bobTa.value.split('\n').map((s) => s.trim()).filter(Boolean);
 
@@ -410,13 +422,46 @@ function initExhibit3(): void {
         : 'dh';
     const protoLabel = proto === 'oprf' ? 'OPRF-PSI (Jarecki-Liu)' : 'DH-PSI (Meadows)';
 
+    // Supersede any earlier run before starting this one.
+    inFlight?.abort();
+    const ctrl = new AbortController();
+    inFlight = ctrl;
+
+    const onWorker = workerSupported();
     runBtn.disabled = true;
     runBtn.innerHTML = '<span class="spinner" aria-hidden="true"></span><span class="sr-only">Running…</span> Running…';
-    output.innerHTML = `<div class="status info" role="status">Running ${protoLabel} (${aliceSet.length} × ${bobSet.length} elements)…</div>`;
+    output.innerHTML = `<div class="status info" role="status">Running ${protoLabel} (${aliceSet.length} × ${bobSet.length} elements)${onWorker ? ' in a Web Worker — UI stays responsive' : ''}…</div>`;
 
-    setTimeout(() => {
-      const result =
-        proto === 'oprf' ? runOPRFPSI(aliceSet, bobSet) : runPSI(aliceSet, bobSet);
+    let result: SimResult;
+    try {
+      // Offload the O(n+m) scalar-mul work to the worker so the main thread —
+      // and the page — stay responsive even for large pasted sets.
+      if (onWorker) {
+        result = await callWorker<SimResult>(
+          proto === 'oprf' ? 'oprf' : 'psi',
+          { aliceSet, bobSet },
+          { signal: ctrl.signal }
+        );
+      } else {
+        // No Worker support: run on the main thread, but first yield a macrotask
+        // so the browser paints the spinner / announces the aria-live status
+        // before the synchronous scalar-mul work blocks the thread.
+        await new Promise((r) => setTimeout(r, 0));
+        if (ctrl.signal.aborted || inFlight !== ctrl) return;
+        result = proto === 'oprf' ? runOPRFPSI(aliceSet, bobSet) : runPSI(aliceSet, bobSet);
+      }
+    } catch (err) {
+      // A newer run aborted this one — let the newer run own the UI.
+      if (err instanceof Error && err.name === 'AbortError') return;
+      output.innerHTML = `<div class="status error">PSI failed: ${esc(err instanceof Error ? err.message : String(err))}</div>`;
+      if (inFlight === ctrl) { inFlight = null; runBtn.disabled = false; runBtn.textContent = 'Run PSI'; }
+      return;
+    }
+
+    // Guard against a race where this run was superseded after resolving.
+    if (ctrl.signal.aborted || inFlight !== ctrl) return;
+
+    {
       const check = verifyCorrectness(aliceSet, bobSet, result);
 
       output.innerHTML = `
@@ -449,9 +494,10 @@ function initExhibit3(): void {
           </div>
         </div>`;
 
+      inFlight = null;
       runBtn.disabled = false;
       runBtn.textContent = 'Run PSI';
-    }, 50);
+    }
   });
 }
 
@@ -572,6 +618,7 @@ function initExhibit4(): void {
     const { probes, ristrettoVerdict } = simulateMalformedPointInjection();
     a4Output.innerHTML = `
       <div class="result-box">
+        <div class="table-scroll" role="group" tabindex="0" aria-label="Point injection probe results, scrollable">
         <table class="probe-table" aria-label="Malicious point injection probes">
           <thead>
             <tr>
@@ -596,6 +643,7 @@ function initExhibit4(): void {
               .join('')}
           </tbody>
         </table>
+        </div>
         <div class="warning-box">${esc(ristrettoVerdict)}</div>
       </div>`;
   });
@@ -638,7 +686,8 @@ function initExhibit4(): void {
           <span class="info-value">${fmt(silentDrops)}</span>
         </div>
 
-        <table class="probe-table" style="margin-top:0.75rem" aria-label="Honest vs malicious OPRF Bob outcomes">
+        <div class="table-scroll" role="group" tabindex="0" aria-label="Honest vs malicious OPRF Bob outcomes, scrollable" style="margin-top:0.75rem">
+        <table class="probe-table" aria-label="Honest vs malicious OPRF Bob outcomes">
           <thead>
             <tr>
               <th scope="col">Bob behaviour</th>
@@ -668,6 +717,7 @@ function initExhibit4(): void {
             </tr>
           </tbody>
         </table>
+        </div>
 
         <div class="warning-box">${esc(result.warningMessage)}</div>
       </div>`;
@@ -972,8 +1022,9 @@ function initExhibit6(): void {
       } else {
         // Fallback for environments without Worker support — keep the
         // smaller grid so the page doesn't lock up.
+        let hbCounter = 0;
         microBenches = [
-          localBench('hashToPoint', 500, () => { hashToPoint('bench-' + Math.random()); }),
+          localBench('hashToPoint', 500, () => { hashToPoint('bench-' + hbCounter++); }),
           localBench('scalarMul', 500, () => {
             const p = hashToPoint('benchmark');
             const s = randomScalar();
@@ -1012,6 +1063,7 @@ function initExhibit6(): void {
 
     bmOutput.innerHTML = `
       <div class="result-box">
+        <div class="table-scroll" role="group" tabindex="0" aria-label="Benchmark results, scrollable">
         <table class="bench-table" aria-label="Benchmark results">
           <thead>
             <tr>
@@ -1028,6 +1080,7 @@ function initExhibit6(): void {
             ${rowsHtml(psiRows)}
           </tbody>
         </table>
+        </div>
         <div class="status info">
           Numbers are from THIS browser session, executed in a Web Worker so the
           main thread stays responsive. For reference: KKRT16/VOLE-PSI in C++ reach
@@ -1151,7 +1204,7 @@ function initDDHVisualization(): void {
 const appEl = document.getElementById('app')!;
 appEl.innerHTML = `
 <a href="#main-content" class="skip-link">Skip to main content</a>
-<header>
+<div class="app-header">
   <h1>PSI Gate</h1>
   <p>
     Private Set Intersection — compute A ∩ B without either party
@@ -1161,7 +1214,7 @@ appEl.innerHTML = `
   <p style="font-size:0.8rem;margin-top:0.25rem">
     DH-PSI (Meadows 1986, Huberman-Franklin-Hogg 1999) · ristretto255 · No backends
   </p>
-</header>
+</div>
 
 <div role="tablist" aria-label="Demo exhibits">
   <button type="button" id="tab-1" role="tab" aria-selected="true"  aria-controls="exhibit-1" tabindex="0"  class="tab-btn active">1. Contact Discovery</button>
@@ -1474,7 +1527,7 @@ crypto-lab-ot-gate           — oblivious transfer (used in OPRF-PSI)</pre>
   </ul>
 
   <h3>PSI Protocol Comparison</h3>
-  <div class="psi-compare-scroll">
+  <div class="psi-compare-scroll" tabindex="0" role="group" aria-label="PSI protocol comparison table, scrollable">
     <table class="psi-compare" aria-label="PSI protocol comparison">
       <thead>
         <tr>

@@ -1,12 +1,4 @@
-# PSI Gate — Private Set Intersection
-
-[![CI](https://github.com/systemslibrarian/crypto-lab-psi-gate/actions/workflows/test.yml/badge.svg)](https://github.com/systemslibrarian/crypto-lab-psi-gate/actions/workflows/test.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
-[![Node: 20 · 22](https://img.shields.io/badge/node-20%20%7C%2022-339933?logo=node.js&logoColor=white)](./.github/workflows/test.yml)
-[![Test Vectors: PSI-GATE-v1](https://img.shields.io/badge/test_vectors-PSI--GATE--v1-blue)](./TEST_VECTORS.md)
-
-> "Whether therefore ye eat, or drink, or whatsoever ye do, do all to the glory of God."
-> — 1 Corinthians 10:31
+# crypto-lab-psi-gate
 
 ## What It Is
 
@@ -30,15 +22,68 @@ limitations. All cryptography runs in-browser — no backends, no servers.
   correctness and privacy
 - Evaluating PSI for contact discovery, password breach checking, ad attribution,
   or healthcare data sharing applications
-
-**Not for:** production PSI implementations. This demo is semi-honest secure only and
-doesn't include the rate limiting, proof-of-work, or set size hiding needed for
-real deployment. Use Signal's OPRF-based PSI or Google's Private Join and Compute
-library for production use.
+- Do NOT use this for production PSI — this demo is semi-honest secure only and
+  doesn't include the rate limiting, proof-of-work, or set size hiding needed for
+  real deployment. Use Signal's OPRF-based PSI or Google's Private Join and Compute
+  library for production use.
 
 ## Live Demo
 
-https://systemslibrarian.github.io/crypto-lab-psi-gate/
+**[systemslibrarian.github.io/crypto-lab-psi-gate](https://systemslibrarian.github.io/crypto-lab-psi-gate/)**
+
+The page runs the full three-round DH-PSI protocol in the browser across six exhibits: a contact-discovery scenario contrasting naive hashing with PSI, an animated protocol walkthrough with blinding/unblinding, a live simulator where you paste your own sets, attack demos (set-size inflation, dictionary attacks, scalar reuse, malformed-point injection), a real-world deployments tour, and a Cryptographer's Lab with canonical test vectors, a byte-level wire transcript, live benchmarks, and a simulator-based security argument. All cryptography runs client-side with no servers.
+
+## What Can Go Wrong
+
+- **Set sizes are revealed.** Both parties learn how many elements the other has.
+  Hiding set sizes requires more sophisticated protocols (PaXoS, CM20).
+
+- **Dictionary attacks work against small domains.** If elements come from a small
+  domain (phone numbers, PINs), an attacker can enumerate the entire space and learn
+  your full set. Real deployments add rate limiting, proof-of-work, or OPRF.
+
+- **Scalar reuse is catastrophic.** If Alice reuses α across sessions with Bob, Bob
+  can link sessions and detect which elements changed. Fresh α per session is mandatory.
+
+- **Semi-honest security only.** The protocol assumes both parties follow it honestly.
+  An actively malicious party can deviate — submit malformed points, reuse scalars
+  intentionally, or lie about results. Malicious-security PSI requires additional ZK proofs.
+
+- **Inherent information leakage.** Even a perfect PSI tells Alice which of her elements
+  are in Bob's set. That fact alone may be sensitive depending on context.
+
+## Real-World Usage
+
+The DH-PSI protocol dates to Meadows 1986 and was analyzed by Huberman, Franklin, and
+Hogg (1999). Production deployments:
+
+- **Signal** — contact discovery via SGX enclave + OPRF-based PSI
+- **Apple iOS 14+** — Password Monitoring against breach databases
+- **Google Password Checkup** — 4B+ leaked credentials, blind hashing + k-anonymity
+- **Google Private Join and Compute** — ad conversion attribution (open-source)
+- **Meta Private Lift** — advertising measurement without user-level data sharing
+- **DP3T / Google-Apple Exposure Notification** — COVID contact tracing
+- **Healthcare** — cross-hospital duplicate billing detection
+
+Modern high-performance PSI (KKRT16, PaXoS, VOLE-PSI) builds on oblivious PRF
+from oblivious transfer. The group used here (ristretto255) is the same prime-order
+abstraction behind Signal Double Ratchet and X25519.
+
+## How to Run Locally
+
+```bash
+git clone https://github.com/systemslibrarian/crypto-lab-psi-gate
+cd crypto-lab-psi-gate
+npm install
+npm run dev
+```
+
+## Related Demos
+- [crypto-lab-opaque-gate](https://systemslibrarian.github.io/crypto-lab-opaque-gate/) — OPAQUE aPAKE built on an OPRF, the same primitive that hardens production PSI.
+- [crypto-lab-ot-gate](https://systemslibrarian.github.io/crypto-lab-ot-gate/) — oblivious transfer, the foundation of modern high-performance OPRF-based PSI.
+- [crypto-lab-oblivious-shelf](https://systemslibrarian.github.io/crypto-lab-oblivious-shelf/) — private information retrieval, a neighboring "query without revealing" primitive.
+- [crypto-lab-paillier-gate](https://systemslibrarian.github.io/crypto-lab-paillier-gate/) — Paillier additive homomorphic encryption, used in some PSI and private-aggregation variants.
+- [crypto-lab-silent-tally](https://systemslibrarian.github.io/crypto-lab-silent-tally/) — private aggregation over secret-shared inputs, another two-party privacy computation.
 
 ## The DH-PSI Protocol
 
@@ -87,42 +132,6 @@ For reviewers and implementers who need byte-level rigor:
 - **Protocol comparison** — DH-PSI vs OPRF-PSI vs KKRT16 vs CM20 vs PaXoS/VOLE-PSI
   vs FHE-PSI, with communication, computation, security model, and year.
 
-## What Can Go Wrong
-
-- **Set sizes are revealed.** Both parties learn how many elements the other has.
-  Hiding set sizes requires more sophisticated protocols (PaXoS, CM20).
-
-- **Dictionary attacks work against small domains.** If elements come from a small
-  domain (phone numbers, PINs), an attacker can enumerate the entire space and learn
-  your full set. Real deployments add rate limiting, proof-of-work, or OPRF.
-
-- **Scalar reuse is catastrophic.** If Alice reuses α across sessions with Bob, Bob
-  can link sessions and detect which elements changed. Fresh α per session is mandatory.
-
-- **Semi-honest security only.** The protocol assumes both parties follow it honestly.
-  An actively malicious party can deviate — submit malformed points, reuse scalars
-  intentionally, or lie about results. Malicious-security PSI requires additional ZK proofs.
-
-- **Inherent information leakage.** Even a perfect PSI tells Alice which of her elements
-  are in Bob's set. That fact alone may be sensitive depending on context.
-
-## Real-World Usage
-
-The DH-PSI protocol dates to Meadows 1986 and was analyzed by Huberman, Franklin, and
-Hogg (1999). Production deployments:
-
-- **Signal** — contact discovery via SGX enclave + OPRF-based PSI
-- **Apple iOS 14+** — Password Monitoring against breach databases
-- **Google Password Checkup** — 4B+ leaked credentials, blind hashing + k-anonymity
-- **Google Private Join and Compute** — ad conversion attribution (open-source)
-- **Meta Private Lift** — advertising measurement without user-level data sharing
-- **DP3T / Google-Apple Exposure Notification** — COVID contact tracing
-- **Healthcare** — cross-hospital duplicate billing detection
-
-Modern high-performance PSI (KKRT16, PaXoS, VOLE-PSI) builds on oblivious PRF
-from oblivious transfer. The group used here (ristretto255) is the same prime-order
-abstraction behind Signal Double Ratchet and X25519.
-
 ## Stack
 
 - **Vite + TypeScript strict** — `noUnusedLocals`, `noUnusedParameters`, full strict mode
@@ -151,20 +160,14 @@ npm run test:watch
 CI runs on every push/PR via `.github/workflows/test.yml`:
 typecheck → tests → production build, on Node 20 and 22.
 
-## Related Crypto Labs
-
-```
-crypto-lab-opaque-gate       — aPAKE (authentication, related primitive)
-crypto-lab-silent-tally      — private aggregation
-crypto-lab-blind-oracle      — TFHE (general-purpose PSI via FHE)
-crypto-lab-oblivious-shelf   — PIR (private information retrieval)
-crypto-lab-patron-shield     — privacy-preserving analytics
-crypto-lab-paillier-gate     — Paillier (used in some PSI variants)
-crypto-lab-ot-gate           — oblivious transfer (used in OPRF-PSI)
-```
-
 ## GitHub Topics
 
 `cryptography` `private-set-intersection` `psi` `secure-computation`
 `contact-discovery` `ristretto255` `diffie-hellman` `ddh` `signal-protocol`
 `privacy-preserving` `browser-demo` `educational` `typescript` `vite`
+
+---
+
+*One of 60+ browser demos in the [Crypto Lab](https://crypto-lab.systemslibrarian.dev/) suite.*
+
+*"So whether you eat or drink or whatever you do, do it all for the glory of God." — 1 Corinthians 10:31*

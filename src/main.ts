@@ -1596,6 +1596,12 @@ crypto-lab-ot-gate           — oblivious transfer (used in OPRF-PSI)</pre>
 
 <footer>
   <p>DH-PSI (Meadows 1986, Huberman-Franklin-Hogg 1999) · ristretto255 via @noble/curves</p>
+  <p style="margin-top:0.25rem">Related demos:
+    <a href="https://systemslibrarian.github.io/crypto-lab-opaque-gate/">crypto-lab-opaque-gate</a>,
+    <a href="https://systemslibrarian.github.io/crypto-lab-ot-gate/">crypto-lab-ot-gate</a>,
+    <a href="https://systemslibrarian.github.io/crypto-lab-oblivious-shelf/">crypto-lab-oblivious-shelf</a>,
+    <a href="https://systemslibrarian.github.io/crypto-lab-paillier-gate/">crypto-lab-paillier-gate</a>,
+    <a href="https://systemslibrarian.github.io/crypto-lab-silent-tally/">crypto-lab-silent-tally</a></p>
   <p style="margin-top:0.25rem;font-style:italic;color:var(--text-muted)">
     "Whether therefore ye eat, or drink, or whatsoever ye do, do all to the glory of God." — 1 Cor 10:31
   </p>

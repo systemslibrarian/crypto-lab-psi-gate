@@ -6,10 +6,14 @@
   --alice: #00d4ff;
   --bob: #ff00aa;
   --blinded: #ffd700;
-  --double-blinded: #9d4edd;
+  --double-blinded: #b478e6;
   --match: #00ff88;
-  --no-match: #6b6b8a;
+  --no-match: #8f8faf;
   --private: #ff3366;
+  /* Darker private/red for use as a *button fill* (white ink on top needs
+     >=4.5:1; the bright --private only reaches 3.5:1). Kept separate so the
+     bright hue still serves text, borders, and swatches. */
+  --danger-fill: #cc2249;
   --warning: #ffaa00;
 
   --bg: #0a0a0f;
@@ -23,6 +27,11 @@
 
   /* Focus ring — visible on both themes */
   --focus: #00d4ff;
+
+  /* Match the UA rendering intent to the active theme. Without this the
+     browser can composite form controls / text against the opposite scheme,
+     subtly darkening rendered colors and dropping them below AA. */
+  color-scheme: dark;
 }
 
 /* Light-theme overrides — all accent colors retuned for WCAG AA contrast
@@ -45,6 +54,9 @@
   --text: #14142b;
   --text-muted: #44447a;
   --focus: #006d8f;
+  /* Light-theme --private is already dark enough for white ink (>=6:1). */
+  --danger-fill: #b8002d;
+  color-scheme: light;
 }
 
 /* ── Reset & base ── */
@@ -61,6 +73,10 @@ html {
   font-size: 100%;
   scroll-behavior: smooth;
   -webkit-text-size-adjust: 100%;
+  /* The root element owns a background-color too (not just <body>), so the
+     contrast checker always resolves an opaque backdrop for text painted
+     directly on the page canvas. */
+  background-color: var(--bg);
 }
 
 body {
@@ -310,9 +326,13 @@ p {
 .btn:hover:not(:disabled) { background: var(--surface); border-color: var(--alice); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn.primary { background: var(--alice); color: var(--bg); border-color: var(--alice); font-weight: 600; }
-.btn.primary:hover:not(:disabled) { filter: brightness(1.1); }
-.btn.danger  { background: var(--private); color: #fff; border-color: var(--private); }
-.btn.danger:hover:not(:disabled) { filter: brightness(1.1); }
+/* Re-state the accent background on hover: the generic `.btn:hover` rule sets
+   background:var(--surface) at higher specificity, which would otherwise leave
+   var(--bg) text on a surface fill (invisible / <1.1:1). Keep the accent fill
+   and just brighten it. Same for the danger variant. */
+.btn.primary:hover:not(:disabled) { background: var(--alice); border-color: var(--alice); filter: brightness(1.1); }
+.btn.danger  { background: var(--danger-fill); color: #fff; border-color: var(--danger-fill); }
+.btn.danger:hover:not(:disabled) { background: var(--danger-fill); border-color: var(--danger-fill); filter: brightness(1.1); }
 
 /* ── Textareas ── */
 textarea {

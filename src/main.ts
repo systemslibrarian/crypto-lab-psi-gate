@@ -1204,17 +1204,26 @@ function initDDHVisualization(): void {
 const appEl = document.getElementById('app')!;
 appEl.innerHTML = `
 <a href="#main-content" class="skip-link">Skip to main content</a>
-<div class="app-header">
-  <h1>PSI Gate</h1>
-  <p>
-    Private Set Intersection — compute A ∩ B without either party
-    learning non-matching elements.
-    <span class="security-note">Semi-honest secure only</span>
-  </p>
-  <p style="font-size:0.8rem;margin-top:0.25rem">
-    DH-PSI (Meadows 1986, Huberman-Franklin-Hogg 1999) · ristretto255 · No backends
-  </p>
-</div>
+<header class="cl-hero">
+  <div class="cl-hero-main">
+    <h1 class="cl-hero-title">PSI Gate</h1>
+    <p class="cl-hero-sub">DH-PSI · ristretto255 · three-round Diffie-Hellman</p>
+    <p class="cl-hero-desc">
+      Watch two parties compute A ∩ B by commutatively blinding hashed
+      elements, so each learns only the matches and never the other's
+      non-matching set.
+    </p>
+  </div>
+  <aside class="cl-hero-why" aria-label="Why it matters">
+    <span class="cl-hero-why-label">WHY IT MATTERS</span>
+    <p class="cl-hero-why-text">
+      Contact discovery, ad-conversion measurement, and compromised-password
+      checks all need to intersect private lists without leaking the rest.
+      PSI delivers that guarantee, resting on commutative blinding and the DDH
+      assumption.
+    </p>
+  </aside>
+</header>
 
 <div role="tablist" aria-label="Demo exhibits">
   <button type="button" id="tab-1" role="tab" aria-selected="true"  aria-controls="exhibit-1" tabindex="0"  class="tab-btn active">1. Contact Discovery</button>

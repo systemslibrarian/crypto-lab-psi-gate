@@ -1,9 +1,6 @@
 import './style.css';
 import {
   runPSI,
-  aliceRound1,
-  bobRound2,
-  aliceRound3,
   verifyCorrectness,
   tracePSI,
 } from './psi.js';
@@ -186,160 +183,330 @@ function initExhibit1(): void {
 // Exhibit 2 — Protocol Walkthrough
 // ---------------------------------------------------------------------------
 
+// Each walkthrough element gets a STABLE visual identity — an icon + a color —
+// that it carries through every stage of blinding. The whole point of PSI is
+// that a matched element ends up as the SAME curve point under both blinding
+// orders; a persistent chip lets the learner literally watch that happen
+// instead of reading it in prose. bob@example.com is the shared element, so it
+// is given the same identity in Alice's and Bob's sets.
+interface E2Identity {
+  icon: string;
+  hue: number; // HSL hue for the chip's identity ring
+  label: string; // short human label
+}
+
+const E2_IDENTITY: Record<string, E2Identity> = {
+  'alice@example.com': { icon: '🅰', hue: 205, label: 'alice' },
+  'mom@gmail.com': { icon: '🌷', hue: 330, label: 'mom' },
+  'bob@example.com': { icon: '🤝', hue: 145, label: 'bob (shared)' },
+  'charlie@example.com': { icon: '🎲', hue: 30, label: 'charlie' },
+  'dave@example.com': { icon: '🚲', hue: 265, label: 'dave' },
+};
+
+function e2Identity(el: string): E2Identity {
+  return E2_IDENTITY[el] ?? { icon: '•', hue: 0, label: el };
+}
+
+// A chip that renders one element at a given protocol stage: it shows the
+// stable identity (icon + email) AND the actual bytes of the curve point at
+// this stage, so the learner sees one underlying value flow through H -> αH ->
+// βαH. `matched` snaps it green to mark the byte-identical convergence.
+function e2Chip(
+  el: string,
+  stageLabel: string,
+  hex: string,
+  opts: { matched?: boolean; muted?: boolean } = {}
+): string {
+  const id = e2Identity(el);
+  const cls = ['e2-chip'];
+  if (opts.matched) cls.push('matched');
+  if (opts.muted) cls.push('muted');
+  const ring = opts.matched ? 'var(--match)' : `hsl(${id.hue} 70% 60%)`;
+  return `
+    <div class="${cls.join(' ')}" style="--chip-ring:${ring}"
+      title="${esc(stageLabel)} of ${esc(el)} — same underlying element at every stage">
+      <span class="e2-chip-icon" aria-hidden="true">${id.icon}</span>
+      <span class="e2-chip-body">
+        <span class="e2-chip-name">${esc(el)}</span>
+        <span class="e2-chip-hex" aria-hidden="true">${esc(stageLabel)} = ${truncateHex(hex, 12)}</span>
+      </span>
+    </div>`;
+}
+
 function initExhibit2(): void {
   const aliceSet = ['alice@example.com', 'mom@gmail.com', 'bob@example.com'];
   const bobSet = ['bob@example.com', 'charlie@example.com', 'dave@example.com'];
 
-  let step = 0;
-  let r1: ReturnType<typeof aliceRound1> | null = null;
-  let r2: ReturnType<typeof bobRound2> | null = null;
+  // Fresh random scalars, generated ONCE for the whole walkthrough so an
+  // element's identity is stable as you step forward/back. Real scalar-mul on
+  // real ristretto255 points — nothing is faked. We use the deterministic,
+  // no-shuffle trace so a_i and b_j stay index-aligned to their chips; the
+  // shuffle is a privacy measure the learner already met in Exhibit 1, and
+  // hiding it here is what lets the two blinding PATHS be shown side by side.
+  let alpha = randomScalar();
+  let beta = randomScalar();
 
+  let step = 0;
   const panel = document.getElementById('e2-panel') as HTMLDivElement;
   const prevBtn = document.getElementById('e2-prev') as HTMLButtonElement;
   const nextBtn = document.getElementById('e2-next') as HTMLButtonElement;
   const stepCounter = document.getElementById('e2-step') as HTMLSpanElement;
 
+  const trace = (): ReturnType<typeof tracePSI> => tracePSI(aliceSet, bobSet, alpha, beta);
+
+  const legend = `
+    <div class="e2-legend" role="group" aria-label="Colour key for blinding stages">
+      <span class="e2-legend-title">Key:</span>
+      <span class="e2-legend-item"><span class="e2-swatch plain" aria-hidden="true"></span>plaintext email</span>
+      <span class="e2-legend-item"><span class="e2-swatch hx" aria-hidden="true"></span>H(x): point on the curve</span>
+      <span class="e2-legend-item"><span class="e2-swatch single" aria-hidden="true"></span>single-blinded (one lock)</span>
+      <span class="e2-legend-item"><span class="e2-swatch double" aria-hidden="true"></span>double-blinded (two locks)</span>
+      <span class="e2-legend-item"><span class="e2-swatch match" aria-hidden="true"></span>byte-identical match</span>
+    </div>`;
+
   const steps: Array<() => string> = [
-    // Step 0 — Setup
+    // Step 0 — Plain-language primer: "blinding as a padlock"
     () => `
-      <h3><span class="step-counter" aria-hidden="true">0</span>Setup</h3>
+      <h3><span class="step-counter" aria-hidden="true">0</span>First, the whole idea in 30 seconds</h3>
+      <div class="e2-primer">
+        <p>
+          Alice and Bob each have a list of emails. They want to find the emails
+          they <em>share</em> — without either one handing over their list. Here
+          is the trick, in plain language:
+        </p>
+        <ol class="e2-primer-steps">
+          <li>
+            <strong>Turn each email into a point.</strong> A function
+            <code>H(x)</code> ("hash-to-curve") turns any email into a fixed dot
+            on a mathematical curve — a
+            <span class="e2-term">group point<span class="e2-term-def">one element of the ristretto255 group; think "a specific dot on a curve"</span></span>.
+            The same email always lands on the same dot; a different email lands
+            somewhere unpredictable.
+          </li>
+          <li>
+            <strong>Lock the point in a box.</strong> Multiplying a point by your
+            secret
+            <span class="e2-term">scalar<span class="e2-term-def">a secret number you multiply a point by; here α for Alice, β for Bob</span></span>
+            (Alice's α, Bob's β) scrambles it into a new random-looking point.
+            Only that scalar can undo it — like a padlock only your key opens.
+            Nobody can read the email from a locked box.
+          </li>
+          <li>
+            <strong>Both people lock, in either order.</strong> If Alice locks
+            then Bob locks (β·α·H(x)), you get the <em>same box</em> as Bob
+            locking then Alice locking (α·β·H(x)). Order doesn't matter — that
+            property is called being
+            <span class="e2-term">commutative<span class="e2-term-def">α·β = β·α, so the two locking orders produce the identical result</span></span>.
+          </li>
+        </ol>
+        <p class="e2-primer-punch">
+          So for an email <strong>both</strong> people have, the two locking
+          orders land on the <strong>exact same</strong> doubly-locked point —
+          byte-for-byte identical. For an email only one person has, they never
+          converge. <strong>That single fact is all of PSI.</strong> The next
+          steps let you watch it happen.
+        </p>
+      </div>
+      <div class="status info" style="margin-top:1rem">
+        Under the hood: group is ristretto255 (prime-order, and "DDH-hard" — the
+        locked boxes are provably unlinkable). Hash-to-curve follows RFC 9380.
+        You don't need those names to follow along; they're the honest details
+        for anyone who wants them.
+      </div>`,
+
+    // Step 1 — Setup
+    () => `
+      <h3><span class="step-counter" aria-hidden="true">1</span>Setup — two lists, one shared email</h3>
+      <p>Each email gets a stable icon + colour so you can follow it through every stage.</p>
       <div class="card-row">
         <div>
           <div class="set-label alice">Alice's Set A</div>
-          <ul class="element-list">
-            ${aliceSet.map((el) => `<li>${esc(el)}</li>`).join('')}
-          </ul>
+          <div class="e2-chip-list">
+            ${aliceSet.map((el) => e2Chip(el, 'email', el.split('@')[0]!)).join('')}
+          </div>
         </div>
         <div>
           <div class="set-label bob">Bob's Set B</div>
-          <ul class="element-list">
-            ${bobSet.map((el) => `<li>${esc(el)}</li>`).join('')}
-          </ul>
-        </div>
-      </div>
-      <div class="status info" style="margin-top:1rem">
-        Group: ristretto255 (prime-order, DDH-hard). Hash-to-curve: RFC 9380.
-        Expected intersection: { bob@example.com }
-      </div>`,
-
-    // Step 1 — Alice Round 1
-    () => {
-      r1 = aliceRound1(aliceSet);
-      const scalarHex = Array.from(r1.aliceScalar)
-        .map((b) => b.toString(16).padStart(2, '0'))
-        .join('');
-      return `
-        <h3><span class="step-counter" aria-hidden="true">1</span>Alice — Round 1: Blind her elements</h3>
-        <p>Alice picks a fresh random scalar α and computes X_i = α · H(a_i) for each element.</p>
-        <div class="card">
-          <div class="info-grid">
-            <span class="info-label">α (private, NEVER sent):</span>
-            <button type="button" class="scalar-btn" aria-pressed="false"
-              aria-label="Reveal private scalar α (currently hidden — click to toggle)">
-              <span data-hex aria-hidden="true">${scalarHex}</span>
-            </button>
+          <div class="e2-chip-list">
+            ${bobSet.map((el) => e2Chip(el, 'email', el.split('@')[0]!)).join('')}
           </div>
         </div>
-        <div class="set-label alice" style="margin-top:0.75rem">Blinded elements X_i = α · H(a_i) sent to Bob:</div>
-        <ul class="element-list">
-          ${r1.blindedElements
-            .map((pt, i) => `<li class="blinded" title="Blinded(${esc(aliceSet[i]!)})">X_${i+1} = ${truncateHex(pointToHex(pt))}</li>`)
-            .join('')}
-        </ul>
-        <div class="status info">Bob sees 3 random-looking curve points. He cannot recover Alice's emails.</div>`;
+      </div>
+      ${legend}
+      <div class="status info" style="margin-top:1rem">
+        Only <strong>🤝 bob@example.com</strong> is in both lists — watch that
+        chip specifically. By the last step its two independently-locked forms
+        must become the same point; everyone else's stays random.
+      </div>`,
+
+    // Step 2 — H(x): emails become curve points
+    () => {
+      const t = trace();
+      return `
+        <h3><span class="step-counter" aria-hidden="true">2</span>Step 1 of the lock: H(x) — email → point on the curve</h3>
+        <p>Before any locking, each email is hashed to a curve point with <code>H(x)</code>. Same email ⇒ same point, so 🤝 bob lands on the <em>same</em> dot in both lists (identical hex below).</p>
+        <div class="card-row">
+          <div>
+            <div class="set-label alice">Alice: H(a_i)</div>
+            <div class="e2-chip-list">
+              ${aliceSet.map((el, i) => e2Chip(el, 'H(x)', pointToHex(t.hashedAlice[i]!))).join('')}
+            </div>
+          </div>
+          <div>
+            <div class="set-label bob">Bob: H(b_j)</div>
+            <div class="e2-chip-list">
+              ${bobSet.map((el, j) => e2Chip(el, 'H(x)', pointToHex(t.hashedBob[j]!))).join('')}
+            </div>
+          </div>
+        </div>
+        ${legend}
+        <div class="status info">These H(x) points are never sent on the wire — they'd reveal the emails to anyone who can also compute H. Locking comes next.</div>`;
     },
 
-    // Step 2 — Bob Round 2
+    // Step 3 — Alice locks (α), Bob locks his own (β)
     () => {
-      if (!r1) return '<p class="status error">Run Step 1 first</p>';
-      r2 = bobRound2(r1, bobSet);
-      const bScalarHex = Array.from(r2.bobScalar)
-        .map((b) => b.toString(16).padStart(2, '0'))
-        .join('');
+      const t = trace();
+      const scalarHex = pointToHex(alpha);
+      const bScalarHex = pointToHex(beta);
       return `
-        <h3><span class="step-counter" aria-hidden="true">2</span>Bob — Round 2: Double-blind + blind his own</h3>
-        <p>Bob picks fresh β, computes Y_i = β · X_i (double-blinded Alice's), and Z_j = β · H(b_j) (his own).</p>
+        <h3><span class="step-counter" aria-hidden="true">3</span>Each party puts on their own lock</h3>
+        <p>Alice multiplies each of her points by her secret α → <code>X_i = α·H(a_i)</code>. Bob does the same with his secret β → <code>Z_j = β·H(b_j)</code>. Each is now single-locked and random-looking.</p>
         <div class="card">
           <div class="info-grid">
-            <span class="info-label">β (private, NEVER sent):</span>
+            <span class="info-label">α (Alice's secret, NEVER sent):</span>
             <button type="button" class="scalar-btn" aria-pressed="false"
-              aria-label="Reveal private scalar β (currently hidden — click to toggle)">
+              aria-label="Reveal Alice's private scalar α (currently hidden — click to toggle)">
+              <span data-hex aria-hidden="true">${scalarHex}</span>
+            </button>
+            <span class="info-label">β (Bob's secret, NEVER sent):</span>
+            <button type="button" class="scalar-btn" aria-pressed="false"
+              aria-label="Reveal Bob's private scalar β (currently hidden — click to toggle)">
               <span data-hex aria-hidden="true">${bScalarHex}</span>
             </button>
           </div>
         </div>
-        <div class="card-row">
+        <div class="card-row" style="margin-top:0.75rem">
           <div>
-            <div class="set-label" style="color:var(--double-blinded)">Y_i = β · X_i (sent to Alice)</div>
-            <ul class="element-list">
-              ${r2.doubleBlindedAliceElements
-                .map((pt) => `<li class="double-blinded">Y = ${truncateHex(pointToHex(pt))}</li>`)
-                .join('')}
-            </ul>
+            <div class="set-label" style="color:var(--blinded)">Alice sends X_i = α·H(a_i) → Bob</div>
+            <div class="e2-chip-list single">
+              ${aliceSet.map((el, i) => e2Chip(el, 'α·H(x)', pointToHex(t.wireA2B_X[i]!))).join('')}
+            </div>
           </div>
           <div>
-            <div class="set-label bob">Z_j = β · H(b_j) (sent to Alice, shuffled)</div>
-            <ul class="element-list">
-              ${r2.bobBlindedElements
-                .map((pt) => `<li class="blinded">Z = ${truncateHex(pointToHex(pt))}</li>`)
-                .join('')}
-            </ul>
+            <div class="set-label" style="color:var(--blinded)">Bob sends Z_j = β·H(b_j) → Alice</div>
+            <div class="e2-chip-list single">
+              ${bobSet.map((el, j) => e2Chip(el, 'β·H(x)', pointToHex(t.wireB2A_Z[j]!))).join('')}
+            </div>
           </div>
         </div>
-        <div class="status info">Alice can't learn Bob's emails. Bob can't link Y_i back to Alice's emails.</div>`;
+        ${legend}
+        <div class="status info">Notice 🤝 bob's hex is now <em>different</em> on each side: α·H(bob) ≠ β·H(bob). One lock each is not enough to match — both locks must go on.</div>`;
     },
 
-    // Step 3 — Alice Round 3
+    // Step 4 — Second lock: the two paths converge (the "aha")
     () => {
-      if (!r1 || !r2) return '<p class="status error">Run Steps 1 & 2 first</p>';
-      const result = aliceRound3(r1, r2, aliceSet);
+      const t = trace();
+      // Path 1 (Alice's element): X went to Bob, Bob locks β on top → Y = β·α·H
+      // Path 2 (Bob's element):   Z came to Alice, Alice locks α on top → W = α·β·H
+      const bobIdxA = aliceSet.indexOf('bob@example.com');
+      const bobIdxB = bobSet.indexOf('bob@example.com');
+      const yBob = pointToHex(t.wireB2A_Y[bobIdxA]!);
+      const wBob = pointToHex(t.computedW[bobIdxB]!);
+      const identical = yBob === wBob;
       return `
-        <h3><span class="step-counter" aria-hidden="true">3</span>Alice — Round 3: Double-blind Bob's and match</h3>
-        <p>Alice computes W_j = α · Z_j = αβ · H(b_j). Then checks if any Y_i equals some W_j.</p>
-        <div class="set-label" style="color:var(--double-blinded)">W_j = α · Z_j (αβ · H(b_j))</div>
-        <ul class="element-list" style="margin-bottom:0.75rem">
-          ${r2.bobBlindedElements
-            .map((Z, j) => {
-              const W = scalarMul(r1!.aliceScalar, Z);
-              return `<li class="double-blinded">W_${j+1} = ${truncateHex(pointToHex(W))}</li>`;
-            })
-            .join('')}
-        </ul>
+        <h3><span class="step-counter" aria-hidden="true">4</span>The second lock — the two paths collide ✨</h3>
+        <p>Now each party adds the <em>other's</em> lock on top:</p>
+        <div class="e2-paths">
+          <div class="e2-path">
+            <div class="e2-path-title">Path A — Alice's element, Bob locks second</div>
+            <div class="e2-chip-list double">
+              ${aliceSet.map((el, i) => e2Chip(
+                el,
+                'β·(α·H)',
+                pointToHex(t.wireB2A_Y[i]!),
+                { matched: el === 'bob@example.com' }
+              )).join('')}
+            </div>
+            <div class="e2-path-formula">Y_i = β·(α·H(a_i)) = <strong>βα</strong>·H</div>
+          </div>
+          <div class="e2-path">
+            <div class="e2-path-title">Path B — Bob's element, Alice locks second</div>
+            <div class="e2-chip-list double">
+              ${bobSet.map((el, j) => e2Chip(
+                el,
+                'α·(β·H)',
+                pointToHex(t.computedW[j]!),
+                { matched: el === 'bob@example.com' }
+              )).join('')}
+            </div>
+            <div class="e2-path-formula">W_j = α·(β·H(b_j)) = <strong>αβ</strong>·H</div>
+          </div>
+        </div>
+        <div class="${identical ? 'e2-snap ok' : 'e2-snap bad'}" role="status">
+          <div class="e2-snap-head">
+            <span aria-hidden="true">🤝</span>
+            ${identical
+              ? 'These two hex strings are BYTE-IDENTICAL — the match:'
+              : 'Convergence failed (should not happen):'}
+          </div>
+          <div class="e2-snap-hex">
+            <span>Path A (βα·H(bob)): <code>${esc(truncateHex(yBob, 24))}</code></span>
+            <span>Path B (αβ·H(bob)): <code>${esc(truncateHex(wBob, 24))}</code></span>
+          </div>
+          <p class="e2-snap-note">
+            Because αβ = βα (commutative), locking in either order lands on the
+            <strong>same</strong> point. Only 🤝 bob — the shared email — snaps
+            together. charlie, dave, alice, mom never appear in both paths, so
+            they never collide. <strong>That collision IS the intersection.</strong>
+          </p>
+        </div>
+        ${legend}`;
+    },
+
+    // Step 5 — Match + what each side learns
+    () => {
+      const t = trace();
+      // Match honestly against this walkthrough's own trace: a_i is shared iff
+      // its double-locked form Y_i appears among Bob's double-locked W_j.
+      const wSet = new Set(t.computedW.map(pointToHex));
+      const matched = aliceSet.filter((_el, i) => wSet.has(pointToHex(t.wireB2A_Y[i]!)));
+      const check = verifyCorrectness(aliceSet, bobSet, {
+        intersection: matched,
+        intersectionSize: matched.length,
+        aliceLearnedBobSize: bobSet.length,
+        bobLearnedAliceSize: aliceSet.length,
+      });
+      return `
+        <h3><span class="step-counter" aria-hidden="true">5</span>Read off the answer — and check it's honest</h3>
+        <p>Alice collects every one of her elements whose double-locked form appears in Bob's double-locked set. Those, and only those, are the shared emails.</p>
         <div class="status ok">
-          Intersection (Y_i matched some W_j):
-          ${result.intersection.length > 0
-            ? result.intersection.map((el) => `<div class="intersection-item">${esc(el)}</div>`).join('')
+          Intersection (chips that snapped together):
+          ${matched.length > 0
+            ? matched.map((el) => `<div class="intersection-item">${esc(el)}</div>`).join('')
             : '<span style="color:var(--text-muted)">∅ (empty)</span>'}
         </div>
-        <div class="info-grid" style="margin-top:0.75rem">
-          <span class="info-label">Alice learned Bob's set size:</span>
-          <span class="info-value bob">${result.aliceLearnedBobSize}</span>
-          <span class="info-label">Bob learned Alice's set size:</span>
-          <span class="info-value alice">${result.bobLearnedAliceSize}</span>
-        </div>`;
-    },
-
-    // Step 4 — Verification
-    () => {
-      if (!r1 || !r2) return '<p class="status error">Run Steps 1-3 first</p>';
-      const result = aliceRound3(r1, r2, aliceSet);
-      const check = verifyCorrectness(aliceSet, bobSet, result);
-      return `
-        <h3><span class="step-counter" aria-hidden="true">4</span>Verification</h3>
-        <p>Compare PSI output to the plain-text intersection (honest verifier check — not a security feature).</p>
-        <div class="card">
+        <div class="card" style="margin-top:0.75rem">
           <div class="info-grid">
-            <span class="info-label">Expected intersection:</span>
+            <span class="info-label">Plain-text intersection (verifier check):</span>
             <span class="info-value match">${check.expected.join(', ') || '∅'}</span>
-            <span class="info-label">PSI intersection:</span>
+            <span class="info-label">PSI result:</span>
             <span class="info-value match">${check.actual.join(', ') || '∅'}</span>
             <span class="info-label">Correct:</span>
             <span class="info-value ${check.matches ? 'match' : 'private'}">${check.matches ? '✓ YES' : '✗ NO'}</span>
           </div>
         </div>
-        <div class="status ok">
-          The DH-PSI protocol correctly computed A ∩ B without either party
-          revealing their non-intersection elements.
+        <div class="info-grid" style="margin-top:0.75rem">
+          <span class="info-label">Alice learned:</span>
+          <span class="info-value match">the intersection + Bob's set size (${bobSet.length})</span>
+          <span class="info-label">Bob learned:</span>
+          <span class="info-value bob">Alice's set size (${aliceSet.length})</span>
+          <span class="info-label">Neither learned:</span>
+          <span class="info-value">the other's non-matching emails</span>
+        </div>
+        <div class="status info" style="margin-top:0.75rem">
+          The verifier check just confirms the math; it is not part of the
+          protocol and not a security feature. Try Exhibit 3 to run this on your
+          own lists.
         </div>`;
     },
   ];
@@ -404,6 +571,66 @@ function initExhibit3(): void {
     aliceLearnedBobSize: number;
     bobLearnedAliceSize: number;
   };
+
+  // Cap the alignment grid so it stays a mental-model builder, not a wall of
+  // hex (and so the extra main-thread trace stays instant). Above this, the
+  // final-intersection view is enough.
+  const ALIGN_MAX = 12;
+
+  // Build the "watch the match happen" alignment grid for a DH-PSI run on the
+  // user's OWN data. We compute a real, index-preserving trace (real ristretto
+  // scalar-mul, fresh random α/β, no shuffle so rows line up to plaintext) and
+  // show Alice's double-blinded Y_i beside Bob's double-blinded W_j, marking the
+  // rows whose bytes are identical. Nothing here is faked; the shuffle we drop
+  // is only a privacy measure, and here the learner is the trusted observer.
+  function alignmentGrid(aliceSet: string[], bobSet: string[]): string {
+    const t = tracePSI(aliceSet, bobSet, randomScalar(), randomScalar());
+    const yHex = t.wireB2A_Y.map(pointToHex);
+    const wHex = t.computedW.map(pointToHex);
+    const wSet = new Set(wHex);
+    const ySet = new Set(yHex);
+    const aliceRows = aliceSet
+      .map((el, i) => ({ el, hex: yHex[i]!, matched: wSet.has(yHex[i]!) }))
+      .sort((a, b) => Number(b.matched) - Number(a.matched));
+    const bobRows = bobSet
+      .map((el, j) => ({ el, hex: wHex[j]!, matched: ySet.has(wHex[j]!) }))
+      .sort((a, b) => Number(b.matched) - Number(a.matched));
+    const row = (r: { el: string; hex: string; matched: boolean }): string => `
+      <li class="align-row${r.matched ? ' matched' : ''}">
+        ${r.matched ? '<span class="align-tick" aria-hidden="true">✓</span>' : '<span class="align-tick empty" aria-hidden="true"></span>'}
+        <span class="align-hex">${esc(truncateHex(r.hex, 16))}</span>
+        <span class="align-plain" hidden>${esc(r.el)}</span>
+      </li>`;
+    return `
+      <div class="card align-card" style="margin-top:0.75rem">
+        <div class="align-head">
+          <div style="font-size:0.8rem;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted)">
+            Watch the match: double-blinded values side by side
+          </div>
+          <button type="button" id="e3-reveal" class="btn" aria-pressed="false">Reveal plaintext</button>
+        </div>
+        <p style="font-size:0.82rem;color:var(--text-muted);margin:0.25rem 0 0.75rem">
+          Alice's Y_i = βα·H(a_i) beside Bob's W_j = αβ·H(b_j). A row is marked
+          ✓ when its bytes appear on both sides — that byte-identical collision
+          is exactly what the protocol matches on. Everything else stays random.
+        </p>
+        <div class="align-grid">
+          <div>
+            <div class="set-label alice">Alice: Y_i (βα·H)</div>
+            <ul class="align-list" tabindex="0" role="region" aria-label="Alice's double-blinded values">
+              ${aliceRows.map(row).join('')}
+            </ul>
+          </div>
+          <div>
+            <div class="set-label bob">Bob: W_j (αβ·H)</div>
+            <ul class="align-list" tabindex="0" role="region" aria-label="Bob's double-blinded values">
+              ${bobRows.map(row).join('')}
+            </ul>
+          </div>
+        </div>
+        <p class="align-legend"><span class="align-tick" aria-hidden="true">✓</span> = byte-identical on both sides = in the intersection.</p>
+      </div>`;
+  }
 
   runBtn.addEventListener('click', async () => {
     const aliceSet = aliceTa.value.split('\n').map((s) => s.trim()).filter(Boolean);
@@ -492,7 +719,31 @@ function initExhibit3(): void {
             <span class="info-label">Neither learned:</span>
             <span class="info-value">Alice's ${aliceSet.length - result.intersectionSize} non-matching elements; Bob's ${bobSet.length - result.intersectionSize} non-matching elements</span>
           </div>
-        </div>`;
+        </div>
+        ${
+          proto === 'dh' && aliceSet.length <= ALIGN_MAX && bobSet.length <= ALIGN_MAX
+            ? alignmentGrid(aliceSet, bobSet)
+            : proto === 'oprf'
+              ? '<div class="status info" style="margin-top:0.75rem">The side-by-side alignment grid is shown for the DH-PSI protocol (two double-blinded columns). OPRF-PSI matches a single column of PRF tags instead — switch to DH-PSI above to watch the two columns converge.</div>'
+              : `<div class="status info" style="margin-top:0.75rem">The alignment grid renders for sets up to ${ALIGN_MAX} elements each so it stays readable — trim your lists to watch the match row-by-row.</div>`
+        }`;
+
+      // Wire the reveal/hide-plaintext toggle for the alignment grid (if shown).
+      const revealBtn = document.getElementById('e3-reveal') as HTMLButtonElement | null;
+      if (revealBtn) {
+        revealBtn.addEventListener('click', () => {
+          const showing = revealBtn.getAttribute('aria-pressed') === 'true';
+          const next = !showing;
+          revealBtn.setAttribute('aria-pressed', String(next));
+          revealBtn.textContent = next ? 'Hide plaintext' : 'Reveal plaintext';
+          output.querySelectorAll<HTMLElement>('.align-plain').forEach((el) => {
+            el.hidden = !next;
+          });
+          output.querySelectorAll<HTMLElement>('.align-hex').forEach((el) => {
+            el.hidden = next;
+          });
+        });
+      }
 
       inFlight = null;
       runBtn.disabled = false;

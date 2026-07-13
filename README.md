@@ -31,7 +31,7 @@ limitations. All cryptography runs in-browser — no backends, no servers.
 
 **[systemslibrarian.github.io/crypto-lab-psi-gate](https://systemslibrarian.github.io/crypto-lab-psi-gate/)**
 
-The page runs the full three-round DH-PSI protocol in the browser across six exhibits: a contact-discovery scenario contrasting naive hashing with PSI, an animated protocol walkthrough with blinding/unblinding, a live simulator where you paste your own sets, attack demos (set-size inflation, dictionary attacks, scalar reuse, malformed-point injection), a real-world deployments tour, and a Cryptographer's Lab with canonical test vectors, a byte-level wire transcript, live benchmarks, and a simulator-based security argument. All cryptography runs client-side with no servers.
+The page runs the full three-round DH-PSI protocol in the browser across six exhibits: a contact-discovery scenario contrasting naive hashing with PSI, a step-by-step protocol walkthrough (opening with a plain-language "blinding as a padlock" primer, then following each email as a stable colour-and-icon chip through H(x) → single-blind → double-blind until the two independently-blinded paths of a shared element visibly snap onto the same byte-identical point), a live simulator where you paste your own sets and see a side-by-side alignment grid of the double-blinded values matching row by row, attack demos (set-size inflation, dictionary attacks, scalar reuse, malformed-point injection), a real-world deployments tour, and a Cryptographer's Lab with canonical test vectors, a byte-level wire transcript, live benchmarks, and a simulator-based security argument. All cryptography runs client-side with no servers.
 
 ## What Can Go Wrong
 
@@ -99,16 +99,21 @@ Round 2 (Bob):    Pick random β.  Send Y_i = β·X_i and Z_j = β·H(b_j) shuff
 Round 3 (Alice):  Compute W_j = α·Z_j.  Intersection = {a_i : Y_i ∈ {W_j}}.
 ```
 
-**Why it works:** Both α and β are applied to matched elements, giving the same
-`αβ·H(x)` regardless of order (DDH commutativity). Non-matched elements look random.
+**Why it works:** A shared element gets both α and β applied to it, and scalar
+multiplication is commutative — `β·(α·H(x)) = α·(β·H(x)) = αβ·H(x)` — so Alice's
+`Y_i` and Bob's `W_j` for that element are the *same curve point, byte-for-byte*.
+That collision is the intersection. Non-matched elements never receive both
+scalars, so they stay random and never collide. Exhibit 2 lets you watch the two
+blinding orders converge onto that identical point; the DDH assumption is what
+makes every non-colliding point unlinkable to its plaintext.
 
 ## Six Exhibits
 
 | # | Exhibit | What you see |
 |---|---------|--------------|
 | 1 | Contact Discovery Problem | PrayerWarriors.Mobi scenario; naive vs PSI approach |
-| 2 | Protocol Walkthrough | Step-by-step with animated blinding/unblinding |
-| 3 | Live Simulator | Paste your own sets; run PSI instantly |
+| 2 | Protocol Walkthrough | Plain-language padlock primer, then each email tracked as a stable colour/icon chip through H(x) → single- → double-blind, until the two blinding orders of a shared element snap onto the same byte-identical point |
+| 3 | Live Simulator | Paste your own sets; run PSI instantly, with a side-by-side alignment grid of double-blinded values and a reveal-plaintext toggle |
 | 4 | Attack Demos | Set size inflation, dictionary attack, scalar reuse, malformed-point injection, malicious OPRF publication |
 | 5 | Real-World Deployments | Signal, Apple, Google, DP3T, healthcare |
 | 6 | Cryptographer's Lab | Test vectors, wire transcript, benchmarks, security argument, PSI protocol comparison |

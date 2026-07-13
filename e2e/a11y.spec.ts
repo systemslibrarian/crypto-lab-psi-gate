@@ -52,15 +52,17 @@ async function driveDemos(page: Page): Promise<void> {
   await page.locator('#e1-run').click();
   await expect(page.locator('#e1-output .result-box')).toBeVisible();
 
-  // Exhibit 2 — Protocol Walkthrough: step through all rounds so each
-  // step's injected markup (scalar buttons, blinded lists, verification) renders.
+  // Exhibit 2 — Protocol Walkthrough: step through EVERY step so all injected
+  // markup (primer terms, identity chips, scalar buttons, the two-path snap,
+  // the final verification info-grid) renders and gets scanned. Next disables
+  // itself on the last step, so loop until it does.
   await page.locator('#tab-2').click();
   const e2next = page.locator('#e2-next');
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 8; i++) {
     if (await e2next.isDisabled()) break;
     await e2next.click();
   }
-  await expect(page.locator('#e2-panel .info-grid')).toBeVisible();
+  await expect(page.locator('#e2-panel .info-grid').first()).toBeVisible();
 
   // Exhibit 3 — Live Simulator: run DH, then switch to OPRF and run again.
   await page.locator('#tab-3').click();
@@ -107,6 +109,32 @@ async function scan(page: Page): Promise<void> {
   expect(summary).toEqual([]);
 }
 
+// Exhibit 2 renders one step at a time (innerHTML is replaced on each Next), so
+// a single end-of-run scan only ever sees the LAST step. Walk every step and
+// scan the panel each time so the primer's glossary terms, the identity chips,
+// the single/double-blind lists, and the two-path "byte-identical" snap all get
+// contrast-checked in whichever theme is active.
+async function scanWalkthroughSteps(page: Page): Promise<void> {
+  await page.locator('#tab-2').click();
+  // Rewind to the first step.
+  const prev = page.locator('#e2-prev');
+  for (let i = 0; i < 8; i++) {
+    if (await prev.isDisabled()) break;
+    await prev.click();
+  }
+  const next = page.locator('#e2-next');
+  for (let i = 0; i < 8; i++) {
+    await killMotion(page);
+    const results = await new AxeBuilder({ page })
+      .include('#e2-panel')
+      .withTags(TAGS)
+      .analyze();
+    expect(results.violations.map((v) => ({ id: v.id, nodes: v.nodes.map((n) => n.target.join(' ')) }))).toEqual([]);
+    if (await next.isDisabled()) break;
+    await next.click();
+  }
+}
+
 test.beforeEach(async ({ page }) => {
   await page.goto('.');
   // App is rendered by main.ts; wait for the shared header toggle + first tab.
@@ -118,6 +146,7 @@ test.beforeEach(async ({ page }) => {
 test('no WCAG A/AA violations in dark theme (all demos driven)', async ({ page }) => {
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await driveDemos(page);
+  await scanWalkthroughSteps(page);
   await killMotion(page);
   await revealAll(page);
   await scan(page);
@@ -127,6 +156,7 @@ test('no WCAG A/AA violations in light theme (all demos driven)', async ({ page 
   await page.locator('#cl-theme-toggle').click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await driveDemos(page);
+  await scanWalkthroughSteps(page);
   await killMotion(page);
   await revealAll(page);
   await scan(page);

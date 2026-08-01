@@ -15,6 +15,7 @@ import {
   hashToPoint,
   scalarMul,
   pointToHex,
+  assertValidPoints,
 } from './group.js';
 
 /**
@@ -132,6 +133,11 @@ export function bobRound2(
   aliceRound1Output: { blindedElements: GroupPoint[] },
   bobSet: string[]
 ): BobRound2 {
+  // X_i arrived from Alice: attacker-controlled bytes. Validate BEFORE any
+  // scalar multiplication — β·O = O would collapse every Y_i to the identity,
+  // and a non-canonical or off-curve encoding must never reach scalarMul.
+  assertValidPoints(aliceRound1Output.blindedElements, 'Bob received X_i from Alice');
+
   const bobScalar = randomScalar();
   const doubleBlindedAliceElements = aliceRound1Output.blindedElements.map(
     (X) => scalarMul(bobScalar, X)
@@ -152,6 +158,12 @@ export function aliceRound3(
 ): PSIResult {
   const { aliceScalar, aliceOriginalMapping, blindedElements } = aliceRound1Output;
   const { doubleBlindedAliceElements, bobBlindedElements } = bobRound2Output;
+
+  // Both batches arrived from Bob. Z_j feeds straight into scalarMul, and Y_i
+  // is compared byte-for-byte against the result — a malicious Bob who could
+  // slip the identity into either one would control the match set.
+  assertValidPoints(doubleBlindedAliceElements, 'Alice received Y_i from Bob');
+  assertValidPoints(bobBlindedElements, 'Alice received Z_j from Bob');
 
   const wSet = new Set<string>(
     bobBlindedElements.map((Z) => pointToHex(scalarMul(aliceScalar, Z)))

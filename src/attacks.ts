@@ -5,13 +5,14 @@
  * executable — produce concrete outputs showing information leakage.
  */
 import {
+  type GroupPoint,
   type Scalar,
-  hashToPoint,
   pointToHex,
-  scalarMul,
   isValidPoint,
+  randomScalar,
+  InvalidPointError,
 } from './group.js';
-import { runPSI } from './psi.js';
+import { bobRound2, runPSI, tracePSI } from './psi.js';
 import {
   oprfBobSetup,
   oprfAliceRound1,
@@ -104,9 +105,13 @@ export function simulateDictionaryAttack(
  * REPLAY / SCALAR REUSE ATTACK:
  *
  * If Alice reuses the same scalar α across two PSI sessions, Bob can
- * link the sessions: he sees which Y_i values appear in both sessions.
- * An Y_i appearing in session 1 but not session 2 means that element
- * left Alice's set. An Y_i new in session 2 means a new element arrived.
+ * link the sessions: he sees which X_i = α·H(a_i) values appear in both.
+ * An X_i present in session 1 but not session 2 means that element left
+ * Alice's set. An X_i new in session 2 means a new element arrived.
+ *
+ * The linked value is X_i, the round-1 A→B wire value — NOT Y_i = β·X_i.
+ * Bob picks a fresh β each session, so Y_i differs across sessions even when
+ * α is reused; it is Alice's half of the blinding that goes stale.
  *
  * Even without knowing what the elements are, Bob learns which elements
  * are stable vs changing — a privacy violation.
@@ -125,30 +130,31 @@ export function simulateReplayAttack(
   stableElements: number;
   addedElements: number;
   removedElements: number;
-  /** Number of Y_i hex strings Bob sees in BOTH sessions (purely from wire data). */
-  linkedYCount: number;
-  /** Truncated samples of linked Y_i values — Bob sees these byte-for-byte twice. */
-  linkedYSamples: string[];
+  /** Number of X_i hex strings Bob sees in BOTH sessions (purely from wire data). */
+  linkedXCount: number;
+  /** Truncated samples of linked X_i values — Bob sees these byte-for-byte twice. */
+  linkedXSamples: string[];
   warningMessage: string;
 } {
-  // Run PSI with fresh scalars in each session to produce the displayed
-  // session intersections (these are what Alice computes; correct in both cases).
-  const r1 = runPSI(aliceSession1Set, bobSet);
-  const r2 = runPSI(aliceSession2Set, bobSet);
+  // Both sessions are run with the REUSED α — that is the scenario being
+  // demonstrated, so the intersections displayed have to come from it. (An
+  // earlier version called runPSI here, which draws a fresh α internally; the
+  // numbers came out the same but belonged to a different execution than the
+  // one the panel describes.) tracePSI takes Alice's scalar explicitly; Bob
+  // still draws a fresh β per session, exactly as an honest Bob would.
+  const t1 = tracePSI(aliceSession1Set, bobSet, reusedAlpha, randomScalar());
+  const t2 = tracePSI(aliceSession2Set, bobSet, reusedAlpha, randomScalar());
 
-  // Now demonstrate the actual leak: Alice reuses α. Bob sees, byte-for-byte,
-  // the SAME Y_i = α·H(a_i) for any element that's stable across sessions.
-  // No plaintext involved — Bob's whole knowledge is the two sets of Y hex strings.
-  const ySession1 = aliceSession1Set.map((el) =>
-    pointToHex(scalarMul(reusedAlpha, hashToPoint(el)))
-  );
-  const ySession2 = aliceSession2Set.map((el) =>
-    pointToHex(scalarMul(reusedAlpha, hashToPoint(el)))
-  );
-  const ySession1Set = new Set(ySession1);
-  const linkedY = ySession2.filter((y) => ySession1Set.has(y));
-  const linkedYCount = linkedY.length;
-  const linkedYSamples = linkedY.slice(0, 3).map((y) => y.slice(0, 16) + '…');
+  // The leak, read straight off those two traces: Bob compares the X_i he
+  // received in session 1 with the X_i he received in session 2. Stable
+  // elements re-appear byte-for-byte, because α·H(a_i) is a deterministic
+  // function of an unchanged α and an unchanged a_i. No plaintext involved.
+  const xSession1 = t1.wireA2B_X.map(pointToHex);
+  const xSession2 = t2.wireA2B_X.map(pointToHex);
+  const xSession1Set = new Set(xSession1);
+  const linkedX = xSession2.filter((x) => xSession1Set.has(x));
+  const linkedXCount = linkedX.length;
+  const linkedXSamples = linkedX.slice(0, 3).map((x) => x.slice(0, 16) + '…');
 
   const s1Set = new Set(aliceSession1Set);
   const s2Set = new Set(aliceSession2Set);
@@ -156,30 +162,30 @@ export function simulateReplayAttack(
   const addedElements = aliceSession2Set.filter((el) => !s1Set.has(el)).length;
   const removedElements = aliceSession1Set.filter((el) => !s2Set.has(el)).length;
 
-  // Sanity check: the Y_i overlap Bob observes equals the true stable count.
+  // Sanity check: the X_i overlap Bob observes equals the true stable count.
   // (If this ever diverges, the leak is even worse than advertised.)
   const bobInfersAliceChange =
-    addedElements > 0 || removedElements > 0 || linkedYCount !== aliceSession1Set.length;
+    addedElements > 0 || removedElements > 0 || linkedXCount !== aliceSession1Set.length;
 
   const warningMessage = bobInfersAliceChange
-    ? `LEAK: With reused α, Bob sees ${linkedYCount} byte-identical Y_i value(s) ` +
+    ? `LEAK: With reused α, Bob sees ${linkedXCount} byte-identical X_i value(s) ` +
       `across the two sessions — these are stable elements in Alice's set. ` +
-      `Bob also sees ${addedElements} new Y_i value(s) (added) and ` +
-      `${removedElements} disappeared Y_i value(s) (removed). ` +
+      `Bob also sees ${addedElements} new X_i value(s) (added) and ` +
+      `${removedElements} disappeared X_i value(s) (removed). ` +
       `He learns the size of the change without learning a single plaintext. ` +
       `Fix: fresh random α per session — MANDATORY.`
-    : `Sets identical across sessions. Bob still sees ${linkedYCount} byte-identical ` +
-      `Y_i value(s), confirming the same α was used twice (a fingerprint by itself).`;
+    : `Sets identical across sessions. Bob still sees ${linkedXCount} byte-identical ` +
+      `X_i value(s), confirming the same α was used twice (a fingerprint by itself).`;
 
   return {
-    session1Intersection: r1.intersection,
-    session2Intersection: r2.intersection,
+    session1Intersection: t1.intersection,
+    session2Intersection: t2.intersection,
     bobInfersAliceChange,
     stableElements,
     addedElements,
     removedElements,
-    linkedYCount,
-    linkedYSamples,
+    linkedXCount,
+    linkedXSamples,
     warningMessage,
   };
 }
@@ -197,6 +203,39 @@ export interface InjectionProbe {
   accepted: boolean;
   /** What would happen if accepted: human-readable consequence. */
   consequence: string;
+  /**
+   * Outcome of feeding this encoding into the REAL protocol path — psi.ts's
+   * `bobRound2`, the function that receives X_i from Alice. `validated` means
+   * assertValidPoints rejected it before any scalar touched it; `crashed`
+   * means validation would have been skipped and the ristretto decode inside
+   * scalarMul happened to blow up (a bug, not a defence — it depends on the
+   * library, leaks a distinguishable error, and does not catch the identity);
+   * `accepted` means it went through.
+   */
+  protocolOutcome: 'validated' | 'crashed' | 'accepted';
+  /**
+   * True when this encoding is invalid BY CONSTRUCTION and must always be
+   * rejected. The random-bytes probe is not: roughly 1 in 16 random 32-byte
+   * strings really is a valid ristretto encoding, and accepting one of those
+   * is correct behaviour, not a validation failure. Only the deterministic
+   * probes are evidence for or against the verdict.
+   */
+  mustBeRejected: boolean;
+}
+
+/**
+ * Feed a candidate encoding into the actual receive path and report what
+ * happened. This is the difference between a certificate and a claim: the
+ * probe does not consult `isValidPoint` and then talk about the protocol, it
+ * hands the bytes to the same `bobRound2` a real session calls.
+ */
+function probeProtocolPath(bytes: GroupPoint): 'validated' | 'crashed' | 'accepted' {
+  try {
+    bobRound2({ blindedElements: [bytes] }, ['probe@example.com']);
+    return 'accepted';
+  } catch (err) {
+    return err instanceof InvalidPointError ? 'validated' : 'crashed';
+  }
 }
 
 /**
@@ -208,13 +247,16 @@ export interface InjectionProbe {
  *   - Non-canonical encodings — two distinct encodings of the same point,
  *     used to fingerprint implementations or fork signatures.
  *
- * Ristretto255 is designed to make these failures impossible by construction:
+ * Ristretto255 removes most of that class by construction:
  *   - The encoding is canonical (each point has exactly one byte form).
  *   - The group has prime order, so no low-order subgroup exists.
- *   - The identity has a distinct, recognizable encoding (all-zero bytes).
  *
- * This probe attempts each malicious encoding and reports whether
- * ristretto255 + a single identity check rejects it.
+ * What it does NOT remove is the identity: O has a perfectly valid ristretto
+ * encoding (32 zero bytes) that decodes without complaint, and β·O = O. That
+ * one needs an explicit check, and a check only counts if the protocol calls
+ * it. So each probe here is run twice — once through `isValidPoint` in
+ * isolation, and once through `bobRound2`, the real receive path — and the
+ * verdict below is built from the protocol-path column, not the isolated one.
  */
 export function simulateMalformedPointInjection(): {
   probes: InjectionProbe[];
@@ -229,6 +271,8 @@ export function simulateMalformedPointInjection(): {
     label: 'Identity element O (all-zero encoding)',
     bytesHex: pointToHex(identity),
     accepted: isValidPoint(identity),
+    protocolOutcome: probeProtocolPath(identity),
+    mustBeRejected: true,
     consequence:
       'If accepted: β·O = O for every i, so every Y_i is the same point. ' +
       'Alice cannot distinguish elements; intersection result becomes meaningless ' +
@@ -242,6 +286,8 @@ export function simulateMalformedPointInjection(): {
     label: 'Non-canonical encoding (high bit set)',
     bytesHex: pointToHex(nonCanonical),
     accepted: isValidPoint(nonCanonical),
+    protocolOutcome: probeProtocolPath(nonCanonical),
+    mustBeRejected: true,
     consequence:
       'On raw Ed25519, a malformed sign bit can encode the same point two ways, ' +
       'enabling implementation fingerprinting and signature malleability. ' +
@@ -255,6 +301,8 @@ export function simulateMalformedPointInjection(): {
     label: 'Random 32 bytes (garbage)',
     bytesHex: pointToHex(garbage),
     accepted: isValidPoint(garbage),
+    protocolOutcome: probeProtocolPath(garbage),
+    mustBeRejected: false,
     consequence:
       'Most random 32-byte strings are not valid ristretto encodings (~94% rejection rate: only ' +
       'the ~2^252 group elements out of 2^256 byte strings decode, i.e. about 1 in 16). ' +
@@ -274,19 +322,41 @@ export function simulateMalformedPointInjection(): {
     label: 'Order-2 point (raw Curve25519 torsion)',
     bytesHex: pointToHex(lowOrder),
     accepted: isValidPoint(lowOrder),
+    protocolOutcome: probeProtocolPath(lowOrder),
+    mustBeRejected: true,
     consequence:
       'On raw Curve25519, this point has order 2: 2·P = O. Reveals the parity of α. ' +
       'Ristretto255 has prime order (no torsion subgroup) — encoding is rejected outright.',
   });
 
-  const accepted = probes.filter((p) => p.accepted).length;
+  // The verdict is read off what the PROTOCOL did, not off a standalone call
+  // to isValidPoint. Only the deterministic probes count: the random-bytes one
+  // is a valid ristretto encoding about 1 time in 16, and accepting a valid
+  // point is correct behaviour, not a hole.
+  const mustFail = probes.filter((p) => p.mustBeRejected);
+  const gotThrough = mustFail.filter((p) => p.protocolOutcome === 'accepted');
+  const validated = mustFail.filter((p) => p.protocolOutcome === 'validated');
+  const random = probes.find((p) => !p.mustBeRejected);
+  const randomNote = random
+    ? random.protocolOutcome === 'accepted'
+      ? ` The random-bytes probe happened to decode to a genuine group element this run ` +
+        `(≈1 in 16 do) and was accepted — correctly: a valid point is a valid point, and it ` +
+        `is not counted against the verdict.`
+      : ` The random-bytes probe was also rejected, as ~15 in 16 random strings are.`
+    : '';
+
   const ristrettoVerdict =
-    accepted === 0
-      ? `Ristretto255 + identity check rejected all ${probes.length} malicious encodings. ` +
-        `This is the point of using ristretto255 instead of raw Ed25519: invalid-curve ` +
-        `and small-subgroup attacks are impossible by construction.`
-      : `WARNING: ${accepted}/${probes.length} malicious encodings were accepted. ` +
-        `The implementation is missing critical input validation.`;
+    gotThrough.length === 0
+      ? `All ${mustFail.length} invalid-by-construction encodings were rejected by psi.ts's ` +
+        `bobRound2 — the same function a real session calls when X_i arrives from Alice — and ` +
+        `all ${validated.length} were caught by the explicit isValidPoint check before any ` +
+        `scalar touched them.${randomNote} Ristretto255 is what makes most of this class ` +
+        `impossible: canonical encodings, prime order, no torsion. The identity is the exception ` +
+        `it does NOT cover — O encodes and decodes perfectly well, and β·O = O collapses every ` +
+        `Y_i — so that one is caught only because the receive path validates.`
+      : `WARNING: ${gotThrough.length}/${mustFail.length} invalid encodings passed through ` +
+        `bobRound2 and were multiplied by β: ${gotThrough.map((p) => p.label).join('; ')}. ` +
+        `The receive path is missing input validation.`;
 
   return { probes, ristrettoVerdict };
 }

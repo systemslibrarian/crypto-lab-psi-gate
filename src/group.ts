@@ -90,6 +90,42 @@ export function isValidPoint(bytes: Uint8Array): boolean {
 }
 
 /**
+ * Raised when a point arriving from the other party fails `isValidPoint`.
+ * Distinct type so callers (and the attack probes) can tell a validation
+ * abort apart from an ordinary decode crash inside `scalarMul`.
+ */
+export class InvalidPointError extends Error {
+  /** Index of the offending element within the received batch. */
+  readonly index: number;
+  constructor(context: string, index: number) {
+    super(
+      `${context}: element ${index} is not a valid ristretto255 group point ` +
+        `(non-canonical encoding, off-curve, or the identity). Aborting — a ` +
+        `received point is attacker-controlled input and is never multiplied ` +
+        `before it is validated.`
+    );
+    this.name = 'InvalidPointError';
+    this.index = index;
+  }
+}
+
+/**
+ * Validate an entire batch of points that just arrived from the other party.
+ *
+ * This is the ONLY reason `isValidPoint` exists: every point crossing the wire
+ * — Alice's X_i, Bob's Y_i and Z_j, the OPRF query and its evaluation — is
+ * chosen by the counterparty and must be checked before any scalar touches it.
+ * Validation costs one extra ristretto decode per element, which is why a
+ * benchmark run is measurably slower than an unvalidated one. That cost is the
+ * price of the guarantee, not an optimisation to skip.
+ */
+export function assertValidPoints(points: readonly GroupPoint[], context: string): void {
+  for (let i = 0; i < points.length; i++) {
+    if (!isValidPoint(points[i]!)) throw new InvalidPointError(context, i);
+  }
+}
+
+/**
  * Domain separation tag for hashToCurve. Tag any output of this PSI build
  * so it cannot be confused with hash-to-curve outputs from another protocol
  * sharing the same ristretto255 group (e.g., OPAQUE, VOPRF). Versioned so a

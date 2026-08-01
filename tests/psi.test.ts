@@ -1,7 +1,19 @@
 import { describe, it, expect } from 'vitest';
-import { runPSI, tracePSI, verifyCorrectness } from '../src/psi.js';
-import { runOPRFPSI } from '../src/oprf-psi.js';
-import { scalarFromSeed, pointToHex } from '../src/group.js';
+import { aliceRound1, aliceRound3, bobRound2, runPSI, tracePSI, verifyCorrectness } from '../src/psi.js';
+import {
+  oprfAliceRound1,
+  oprfAliceRound3,
+  oprfBobRound2,
+  oprfBobSetup,
+  runOPRFPSI,
+} from '../src/oprf-psi.js';
+import {
+  InvalidPointError,
+  hashToPoint,
+  randomScalar,
+  scalarFromSeed,
+  pointToHex,
+} from '../src/group.js';
 
 /** Plaintext intersection — the ground truth that PSI must match. */
 function plainIntersect(a: string[], b: string[]): string[] {
@@ -101,6 +113,85 @@ describe('tracePSI canonical test vector', () => {
     const wHex = new Set(trace.computedW.map(pointToHex));
     // A[0] = alice — not in B. Its Y must NOT appear in W.
     expect(wHex.has(pointToHex(trace.wireB2A_Y[0]!))).toBe(false);
+  });
+});
+
+/**
+ * Every point that crosses the wire is attacker-controlled and must be
+ * validated by the receiving round before a scalar touches it. These tests
+ * exercise each receive point with the encoding that matters most — the
+ * identity, which decodes perfectly well and would collapse every output to O.
+ * If validation is ever dropped from one of these paths, exactly one of these
+ * stops throwing.
+ */
+describe('received-point validation on the protocol path', () => {
+  const IDENTITY = new Uint8Array(32); // canonical ristretto encoding of O
+  const NON_CANONICAL = (() => {
+    const b = new Uint8Array(32);
+    b[31] = 0x80; // high bit set — never a valid ristretto encoding
+    return b;
+  })();
+
+  it('bobRound2 rejects the identity injected as X_i', () => {
+    expect(() => bobRound2({ blindedElements: [IDENTITY] }, ['b'])).toThrow(InvalidPointError);
+  });
+
+  it('bobRound2 rejects a non-canonical encoding injected as X_i', () => {
+    expect(() => bobRound2({ blindedElements: [NON_CANONICAL] }, ['b'])).toThrow(
+      InvalidPointError
+    );
+  });
+
+  it('bobRound2 rejects a bad X_i hidden among honest ones, and names its index', () => {
+    const honest = aliceRound1(['a', 'b', 'c']);
+    const tampered = [...honest.blindedElements];
+    tampered[1] = IDENTITY;
+    try {
+      bobRound2({ blindedElements: tampered }, ['b']);
+      throw new Error('expected bobRound2 to abort');
+    } catch (err) {
+      expect(err).toBeInstanceOf(InvalidPointError);
+      expect((err as InvalidPointError).index).toBe(1);
+    }
+  });
+
+  it('aliceRound3 rejects a malicious Y_i or Z_j from Bob', () => {
+    const A = ['alice', 'bob'];
+    const B = ['bob', 'eve'];
+    const r1 = aliceRound1(A);
+    const r2 = bobRound2(r1, B);
+
+    const badY = { ...r2, doubleBlindedAliceElements: [IDENTITY, IDENTITY] };
+    expect(() => aliceRound3(r1, badY, A)).toThrow(InvalidPointError);
+
+    const badZ = { ...r2, bobBlindedElements: [IDENTITY, ...r2.bobBlindedElements.slice(1)] };
+    expect(() => aliceRound3(r1, badZ, A)).toThrow(InvalidPointError);
+  });
+
+  it('the OPRF server refuses to evaluate an invalid query', () => {
+    const bob = oprfBobSetup(['b']);
+    expect(() => oprfBobRound2({ aliceScalar: randomScalar(), blindedElements: [IDENTITY] }, bob.bobKey))
+      .toThrow(InvalidPointError);
+  });
+
+  it('the OPRF client refuses to unblind an invalid evaluation', () => {
+    const A = ['a'];
+    const bob = oprfBobSetup(['a']);
+    const q = oprfAliceRound1(A);
+    expect(() =>
+      oprfAliceRound3(A, q, { evaluatedElements: [IDENTITY] }, bob.publishedSet)
+    ).toThrow(InvalidPointError);
+  });
+
+  it('validation does not reject honest traffic — full runs still succeed', () => {
+    const A = ['alice@example.com', 'bob@example.com'];
+    const B = ['bob@example.com', 'eve@example.com'];
+    expect(runPSI(A, B).intersection).toEqual(['bob@example.com']);
+    expect(runOPRFPSI(A, B).intersection).toEqual(['bob@example.com']);
+    // And an honestly hashed-and-blinded point is accepted on the receive path.
+    expect(() =>
+      bobRound2({ blindedElements: [hashToPoint('honest')] }, ['b'])
+    ).not.toThrow();
   });
 });
 

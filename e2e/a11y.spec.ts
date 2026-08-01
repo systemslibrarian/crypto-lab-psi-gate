@@ -95,6 +95,9 @@ async function driveDemos(page: Page): Promise<void> {
   await expect(page.locator('#e6-bm-run')).toBeEnabled({ timeout: 60_000 });
   await page.locator('#e6-ddh-run').click();
   await expect(page.locator('#e6-ddh-output .ddh-chart')).toBeVisible({ timeout: 60_000 });
+  // The two constrained-byte charts (byte 0, byte 31) render in the same pass
+  // and carry their own aria-labels and figcaptions, so axe must see them too.
+  await expect(page.locator('#e6-ddh-output .ddh-mini')).toHaveCount(2, { timeout: 60_000 });
   await expect(page.locator('#e6-ddh-run')).toBeEnabled({ timeout: 60_000 });
 }
 

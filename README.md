@@ -47,8 +47,11 @@ The page runs the full three-round DH-PSI protocol in the browser across six exh
   can link sessions and detect which elements changed. Fresh α per session is mandatory.
 
 - **Semi-honest security only.** The protocol assumes both parties follow it honestly.
-  An actively malicious party can deviate — submit malformed points, reuse scalars
-  intentionally, or lie about results. Malicious-security PSI requires additional ZK proofs.
+  An actively malicious party can deviate — reuse scalars intentionally, inflate or
+  deflate its set, or lie about results. Malicious-security PSI requires additional
+  ZK proofs. Received-point validation *is* implemented on every receive path, so a
+  malformed or identity encoding aborts rather than corrupting the run; that closes
+  one specific active attack, not the model.
 
 - **Inherent information leakage.** Even a perfect PSI tells Alice which of her elements
   are in Bob's set. That fact alone may be sensitive depending on context.
@@ -105,9 +108,19 @@ Alice has A = {a_1, ..., a_n}
 Bob   has B = {b_1, ..., b_m}
 
 Round 1 (Alice):  Pick random α.  Send X_i = α·H(a_i) shuffled.
-Round 2 (Bob):    Pick random β.  Send Y_i = β·X_i and Z_j = β·H(b_j) shuffled.
-Round 3 (Alice):  Compute W_j = α·Z_j.  Intersection = {a_i : Y_i ∈ {W_j}}.
+Round 2 (Bob):    Validate every X_i.  Pick random β.
+                  Send Y_i = β·X_i and Z_j = β·H(b_j) shuffled.
+Round 3 (Alice):  Validate every Y_i and Z_j.  Compute W_j = α·Z_j.
+                  Intersection = {a_i : Y_i ∈ {W_j}}.
 ```
+
+Validation is `isValidPoint` and it runs on every point that arrives from the
+counterparty, in both DH-PSI (`psi.ts`) and OPRF-PSI (`oprf-psi.ts`), before any
+scalar touches it. Ristretto255 makes non-canonical encodings and torsion points
+undecodable, but the identity O is a perfectly valid encoding, and β·O = O would
+collapse every Y_i to a single point. That one is caught only by the check.
+Exhibit 4's injection probe feeds each malicious encoding through `bobRound2`
+itself and reports what the protocol did with it.
 
 **Why it works:** A shared element gets both α and β applied to it, and scalar
 multiplication is commutative — `β·(α·H(x)) = α·(β·H(x)) = αβ·H(x)` — so Alice's
@@ -123,8 +136,8 @@ makes every non-colliding point unlinkable to its plaintext.
 |---|---------|--------------|
 | 1 | Contact Discovery Problem | PrayerWarriors.Mobi scenario; naive vs PSI approach |
 | 2 | Protocol Walkthrough | Plain-language padlock primer, then each email tracked as a stable colour/icon chip through H(x) → single- → double-blind, until the two blinding orders of a shared element snap onto the same byte-identical point |
-| 3 | Live Simulator | Paste your own sets; run PSI instantly, with a side-by-side alignment grid of double-blinded values and a reveal-plaintext toggle |
-| 4 | Attack Demos | Set size inflation, dictionary attack, scalar reuse, malformed-point injection, malicious OPRF publication |
+| 3 | Live Simulator | Paste your own sets; run PSI instantly, with a side-by-side alignment grid of double-blinded values (from the same execution as the result above it) and a reveal-plaintext toggle |
+| 4 | Attack Demos | Set size inflation, dictionary attack, scalar reuse, malformed-point injection (each candidate encoding fed through `psi.ts`'s real receive path, not just through `isValidPoint`), malicious OPRF publication |
 | 5 | Real-World Deployments | Apple, Google, Meta, healthcare — plus Signal and DP3T as non-PSI contrasts |
 | 6 | Cryptographer's Lab | Test vectors, wire transcript, benchmarks, security argument, PSI protocol comparison |
 
@@ -140,6 +153,16 @@ For reviewers and implementers who need byte-level rigor:
   hex dump, color-coded by sender. Verifies linear O(n+m) communication.
 - **Benchmarks** — live measurement of `hashToPoint`, `scalarMul`,
   `randomScalar`, and end-to-end PSI at multiple set sizes in your browser.
+- **DDH pseudorandomness sampler** — bins the output bytes of α·H(x) over 5,000
+  fresh inputs and runs a two-sided χ² test against uniform (df = 255, exact
+  quantiles for α = 0.05 and α = 0.01). Byte positions 1–30 carry the test; byte
+  0 and byte 31 are charted *separately* because RFC 9496 pins them — a ristretto
+  encoding is the canonical encoding of an even field element below 2²⁵⁵ − 19, so
+  byte 0 is always even and byte 31 never reaches `0x80`. Both constraints are
+  measured on each run rather than asserted. Pooling all 32 positions is what
+  makes a "flatness" test fail on correct data, and the sharper lesson is the
+  one the panel states: pseudorandomness of the group element is not uniformity
+  of its encoding.
 - **Simulator-based security argument** — sketches of the simulators for
   corrupt Alice and corrupt Bob under DDH; honest list of what this
   implementation is NOT (constant-time, malicious-secure, side-channel hardened,

@@ -257,6 +257,14 @@ p {
 .set-label.alice { color: var(--alice); }
 .set-label.bob   { color: var(--bob); }
 
+/* Marks a panel that shows the lab operator something no participant can see. */
+.omniscient-tag {
+  color: var(--text-muted);
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: none;
+}
+
 /* ── Element lists ── */
 .element-list {
   list-style: none;
@@ -870,6 +878,38 @@ footer {
   display: block;
 }
 
+/* The two constrained byte positions (0 and 31), side by side under the main
+   histogram. Wraps to a single column on narrow screens. */
+.ddh-mini-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.ddh-mini {
+  flex: 1 1 260px;
+  min-width: 0;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface2);
+  padding: 0.5rem;
+}
+
+.ddh-mini svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.ddh-mini figcaption {
+  margin-top: 0.35rem;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
 /* ── Horizontal-scroll wrapper for dynamically-rendered tables ──
    `body` sets overflow-x:hidden to kill stray horizontal page scroll, which
    means a table wider than the viewport would be *clipped* (lost content) on
@@ -913,7 +953,9 @@ footer {
      deliberately left out so labels adopt the user's system foreground and
      stay readable against the forced background. */
   .ddh-chart rect,
-  .ddh-chart line {
+  .ddh-chart line,
+  .ddh-mini rect,
+  .ddh-mini line {
     forced-color-adjust: none;
   }
 }

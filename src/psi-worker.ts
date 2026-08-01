@@ -92,37 +92,77 @@ self.addEventListener('message', (e: MessageEvent<Request>) => {
       }
       case 'distribution': {
         // For the DDH-pseudorandomness viz: hash `count` distinct strings,
-        // multiply by a fresh α, and bin every output byte 0..255.
+        // multiply by a fresh α, and bin the output bytes.
+        //
+        // TWO of the 32 bytes are NOT uniform, and pooling them into the
+        // histogram is not sampling noise, it is a structural bias:
+        //
+        //   byte 0  — a ristretto encoding is the canonical little-endian
+        //             encoding of a field element s that RFC 9496 forces to be
+        //             "non-negative", i.e. even. So byte 0 is always even and
+        //             takes 128 of its 256 values, never the other 128.
+        //   byte 31 — s < 2^255 − 19, so the top bit is always clear and
+        //             byte 31 never reaches 0x80. (This repo already asserts
+        //             that from the other direction: attacks.ts injects
+        //             nonCanonical[31] = 0x80 and expects rejection.)
+        //
+        // Pooling all 32 bytes at count = 5000 contributes ≈310 of systematic
+        // χ² on top of ≈255 of genuine noise, landing around 560 — outside
+        // every acceptance band the page prints. The "flatness" exhibit would
+        // have routinely printed its own failure branch, and the histogram
+        // would have shown a visible step at bin 128.
+        //
+        // So: bytes 1..30 carry the uniformity claim, and the two constrained
+        // bytes are reported separately as the more interesting fact. A
+        // uniform-looking encoding still carries structure; this is where.
+        const FREE_LO = 1;
+        const FREE_HI = 31; // exclusive — byte 31 is constrained
         const alpha = randomScalar();
         const histogram = new Uint32Array(256);
+        const byte0 = new Uint32Array(256);
+        const byte31 = new Uint32Array(256);
         let totalBytes = 0;
         for (let i = 0; i < req.payload.count; i++) {
           const H = hashToPoint('ddh-bench-' + i);
           const Y = scalarMul(alpha, H);
-          for (let j = 0; j < Y.length; j++) {
+          for (let j = FREE_LO; j < FREE_HI; j++) {
             const byte = Y[j]!;
             histogram[byte] = histogram[byte]! + 1;
+            totalBytes++;
           }
-          totalBytes += Y.length;
+          byte0[Y[0]!] = byte0[Y[0]!]! + 1;
+          byte31[Y[31]!] = byte31[Y[31]!]! + 1;
         }
-        // Chi-square statistic against the uniform 1/256 expectation.
+        // Chi-square statistic against the uniform 1/256 expectation, over the
+        // 30 unconstrained byte positions only.
         const expected = totalBytes / 256;
         let chiSq = 0;
         for (let v = 0; v < 256; v++) {
           const diff = histogram[v]! - expected;
           chiSq += (diff * diff) / expected;
         }
-        const histArr: number[] = Array.from(histogram);
+        // How the two constrained bytes actually behaved, measured rather than
+        // asserted: byte 0 should be even every single time, byte 31 should
+        // never reach 0x80.
+        let byte0Odd = 0;
+        for (let v = 1; v < 256; v += 2) byte0Odd += byte0[v]!;
+        let byte31HighBit = 0;
+        for (let v = 128; v < 256; v++) byte31HighBit += byte31[v]!;
         reply({
           id: req.id,
           ok: true,
           result: {
-            histogram: histArr,
+            histogram: Array.from(histogram),
             totalBytes,
             chiSq,
             df: 255,
             sampleAlphaHex: pointToHex(alpha),
             count: req.payload.count,
+            bytesPerSample: FREE_HI - FREE_LO,
+            byte0Histogram: Array.from(byte0),
+            byte31Histogram: Array.from(byte31),
+            byte0Odd,
+            byte31HighBit,
           },
         });
         return;

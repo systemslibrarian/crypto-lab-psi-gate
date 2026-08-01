@@ -1,5 +1,6 @@
 import './style.css';
 import {
+  type PSITrace,
   runPSI,
   verifyCorrectness,
   tracePSI,
@@ -130,7 +131,13 @@ function initExhibit1(): void {
     'pastor.john@church.org',
   ];
 
-  // Render initial lists
+  // Render initial lists.
+  //
+  // Both columns are printed in full, which is the OMNISCIENT view: you are
+  // the lab operator, not a participant. Alice never sees the server column
+  // and the server never sees Alice's. The labels below say so, because
+  // "neither party learned anything else" printed under a visible plaintext
+  // database is otherwise a claim the page appears to contradict on screen.
   aliceList.innerHTML = aliceContacts
     .map((c) => `<li class="no-match">${esc(c)}</li>`)
     .join('');
@@ -169,7 +176,18 @@ function initExhibit1(): void {
             ${result.intersection.map((el) => `<div class="intersection-item">${esc(el)}</div>`).join('')}
           </div>
           <div class="status ok" style="margin-top:0.75rem">
-            ✓ PSI complete — only matching contacts revealed. Neither party learned anything else.
+            ✓ PSI complete — only matching contacts revealed. Neither party learned
+            anything else <em>from the protocol</em>.
+          </div>
+          <div class="status info" style="margin-top:0.5rem">
+            <strong>Omniscient view.</strong> Both lists are printed above because you are
+            outside the protocol, holding both sides' inputs. Alice sees only her own
+            contacts plus the ${result.intersectionSize} match(es) and the count
+            ${result.aliceLearnedBobSize}; the server sees only its own users plus the count
+            ${result.bobLearnedAliceSize}. The
+            ${serverUsers.length - result.intersectionSize} server users and
+            ${aliceContacts.length - result.intersectionSize} contacts that did not match
+            are on your screen and on nobody else's.
           </div>
         </div>`;
 
@@ -577,14 +595,17 @@ function initExhibit3(): void {
   // final-intersection view is enough.
   const ALIGN_MAX = 12;
 
-  // Build the "watch the match happen" alignment grid for a DH-PSI run on the
-  // user's OWN data. We compute a real, index-preserving trace (real ristretto
-  // scalar-mul, fresh random α/β, no shuffle so rows line up to plaintext) and
-  // show Alice's double-blinded Y_i beside Bob's double-blinded W_j, marking the
-  // rows whose bytes are identical. Nothing here is faked; the shuffle we drop
-  // is only a privacy measure, and here the learner is the trusted observer.
-  function alignmentGrid(aliceSet: string[], bobSet: string[]): string {
-    const t = tracePSI(aliceSet, bobSet, randomScalar(), randomScalar());
+  // Build the "watch the match happen" alignment grid from the trace of the
+  // run whose result is displayed above it. The learner is told to compare
+  // these hex values byte-for-byte, so they have to belong to the SAME
+  // execution — an earlier version called tracePSI here with its own fresh
+  // scalars, producing a second, unrelated run whose hex the learner was
+  // invited to reconcile with the first one's verdict.
+  //
+  // The trace is real ristretto scalar-mul throughout; the one thing it drops
+  // is the shuffle, so rows line up with plaintext. That is a privacy measure
+  // against the counterparty, and here the learner IS the trusted observer.
+  function alignmentGrid(aliceSet: string[], bobSet: string[], t: PSITrace): string {
     const yHex = t.wireB2A_Y.map(pointToHex);
     const wHex = t.computedW.map(pointToHex);
     const wSet = new Set(wHex);
@@ -613,6 +634,9 @@ function initExhibit3(): void {
           Alice's Y_i = βα·H(a_i) beside Bob's W_j = αβ·H(b_j). A row is marked
           ✓ when its bytes appear on both sides — that byte-identical collision
           is exactly what the protocol matches on. Everything else stays random.
+          These are the values from the run reported above — same α, same β, same
+          points — with only the shuffle omitted so each row still lines up with
+          its plaintext for you.
         </p>
         <div class="align-grid">
           <div>
@@ -654,16 +678,33 @@ function initExhibit3(): void {
     const ctrl = new AbortController();
     inFlight = ctrl;
 
-    const onWorker = workerSupported();
+    // Small DH runs are traced on the main thread so the result panel and the
+    // alignment grid below it describe ONE execution. At these sizes (≤ 12 × 12)
+    // the scalar-mul work is a few milliseconds, so there is nothing to offload.
+    const traced = proto === 'dh' && aliceSet.length <= ALIGN_MAX && bobSet.length <= ALIGN_MAX;
+
+    const onWorker = workerSupported() && !traced;
     runBtn.disabled = true;
     runBtn.innerHTML = '<span class="spinner" aria-hidden="true"></span><span class="sr-only">Running…</span> Running…';
     output.innerHTML = `<div class="status info" role="status">Running ${protoLabel} (${aliceSet.length} × ${bobSet.length} elements)${onWorker ? ' in a Web Worker — UI stays responsive' : ''}…</div>`;
 
     let result: SimResult;
+    let trace: PSITrace | null = null;
     try {
-      // Offload the O(n+m) scalar-mul work to the worker so the main thread —
-      // and the page — stay responsive even for large pasted sets.
-      if (onWorker) {
+      if (traced) {
+        // Yield a macrotask so the spinner paints before the synchronous work.
+        await new Promise((r) => setTimeout(r, 0));
+        if (ctrl.signal.aborted || inFlight !== ctrl) return;
+        trace = tracePSI(aliceSet, bobSet, randomScalar(), randomScalar());
+        result = {
+          intersection: trace.intersection,
+          intersectionSize: trace.intersection.length,
+          aliceLearnedBobSize: trace.wireB2A_Z.length,
+          bobLearnedAliceSize: trace.wireA2B_X.length,
+        };
+      } else if (onWorker) {
+        // Offload the O(n+m) scalar-mul work to the worker so the main thread —
+        // and the page — stay responsive even for large pasted sets.
         result = await callWorker<SimResult>(
           proto === 'oprf' ? 'oprf' : 'psi',
           { aliceSet, bobSet },
@@ -721,8 +762,8 @@ function initExhibit3(): void {
           </div>
         </div>
         ${
-          proto === 'dh' && aliceSet.length <= ALIGN_MAX && bobSet.length <= ALIGN_MAX
-            ? alignmentGrid(aliceSet, bobSet)
+          trace !== null
+            ? alignmentGrid(aliceSet, bobSet, trace)
             : proto === 'oprf'
               ? '<div class="status info" style="margin-top:0.75rem">The side-by-side alignment grid is shown for the DH-PSI protocol (two double-blinded columns). OPRF-PSI matches a single column of PRF tags instead — switch to DH-PSI above to watch the two columns converge.</div>'
               : `<div class="status info" style="margin-top:0.75rem">The alignment grid renders for sets up to ${ALIGN_MAX} elements each so it stays readable — trim your lists to watch the match row-by-row.</div>`
@@ -850,12 +891,19 @@ function initExhibit4(): void {
           <span class="info-value warning">${result.removedElements}</span>
           <span class="info-label">Bob infers Alice's set changed:</span>
           <span class="info-value ${result.bobInfersAliceChange ? 'private' : 'match'}">${result.bobInfersAliceChange ? '✗ YES — privacy violation' : '✓ No change detected'}</span>
-          <span class="info-label">Byte-identical Y_i seen in both sessions:</span>
-          <span class="info-value private">${result.linkedYCount} of ${session1.length} (Bob links these with zero plaintext)</span>
-          ${result.linkedYSamples.length > 0
-            ? `<span class="info-label">Sample linked Y_i (Bob sees twice):</span>
-               <span class="info-value">${result.linkedYSamples.map((s) => esc(s)).join(', ')}</span>`
+          <span class="info-label">Byte-identical X_i seen in both sessions:</span>
+          <span class="info-value private">${result.linkedXCount} of ${session1.length} (Bob links these with zero plaintext)</span>
+          ${result.linkedXSamples.length > 0
+            ? `<span class="info-label">Sample linked X_i (Bob sees twice):</span>
+               <span class="info-value">${result.linkedXSamples.map((s) => esc(s)).join(', ')}</span>`
             : ''}
+        </div>
+        <div class="status info">
+          Both sessions above were executed with the reused α shown to the panel — the
+          intersections, the X_i values, and the linkage all come from those two runs.
+          The linked value is X_i = α·H(a_i), the round-1 A→B wire value. Y_i = β·X_i is
+          <em>not</em> linkable: Bob draws a fresh β each session, so it is Alice's half of
+          the blinding going stale that leaks, not the pair.
         </div>
         <div class="warning-box">${esc(result.warningMessage)}</div>
       </div>`;
@@ -875,22 +923,30 @@ function initExhibit4(): void {
             <tr>
               <th scope="col">Injected encoding</th>
               <th scope="col">32 bytes (hex)</th>
-              <th scope="col">Decoded?</th>
+              <th scope="col">isValidPoint</th>
+              <th scope="col">psi.ts bobRound2</th>
             </tr>
           </thead>
           <tbody>
             ${probes
-              .map(
-                (p) => `
+              .map((p) => {
+                const path =
+                  p.protocolOutcome === 'validated'
+                    ? { cls: 'match', text: '✓ rejected by validation' }
+                    : p.protocolOutcome === 'crashed'
+                      ? { cls: 'warning', text: '⚠ decode threw inside scalarMul' }
+                      : { cls: 'private', text: '✗ multiplied by β' };
+                return `
               <tr>
                 <td>${esc(p.label)}</td>
                 <td class="mono-cell">${esc(p.bytesHex.slice(0, 16))}…${esc(p.bytesHex.slice(-4))}</td>
                 <td class="info-value ${p.accepted ? 'private' : 'match'}">${p.accepted ? '✗ accepted' : '✓ rejected'}</td>
+                <td class="info-value ${path.cls}">${path.text}</td>
               </tr>
               <tr class="probe-detail">
-                <td colspan="3">${esc(p.consequence)}</td>
-              </tr>`
-              )
+                <td colspan="4">${esc(p.consequence)}</td>
+              </tr>`;
+              })
               .join('')}
           </tbody>
         </table>
@@ -1353,14 +1409,23 @@ function initDDHVisualization(): void {
   const out = document.getElementById('e6-ddh-output') as HTMLDivElement | null;
   if (!btn || !out) return;
 
-  // Critical chi-square values for df=255 (two-sided, common α levels).
-  // Source: standard tables. If observed χ² falls outside [lower, upper],
-  // reject the null hypothesis of uniformity at that significance level.
+  // Critical chi-square values for df = 255, two-sided.
+  //
+  // A two-sided test at level α accepts on [q(α/2), q(1−α/2)], so the α = 0.05
+  // band is the 2.5th/97.5th percentiles and the α = 0.01 band is the
+  // 0.5th/99.5th. That makes the 0.05 band strictly INSIDE the 0.01 band —
+  // the tighter test is the one with the larger α. An earlier version had the
+  // pairs swapped in the verdict ladder, which made its middle branch
+  // unreachable and reported "rejected at α = 0.05" for values that had
+  // actually fallen outside the 0.01 interval.
+  //
+  // Values are the exact quantiles of χ²(255) (inverse regularized incomplete
+  // gamma), not a table row for a nearby df.
   const CRIT = {
-    p01_lo: 198.380,
-    p01_hi: 317.097,
-    p05_lo: 213.997,
-    p05_hi: 297.829,
+    p05_lo: 212.661, //  2.5th percentile
+    p05_hi: 301.125, // 97.5th percentile
+    p01_lo: 200.588, //  0.5th percentile
+    p01_hi: 316.919, // 99.5th percentile
   };
 
   btn.addEventListener('click', async () => {
@@ -1379,6 +1444,11 @@ function initDDHVisualization(): void {
         df: number;
         sampleAlphaHex: string;
         count: number;
+        bytesPerSample: number;
+        byte0Histogram: number[];
+        byte31Histogram: number[];
+        byte0Odd: number;
+        byte31HighBit: number;
       }>('distribution', { count: 5000 });
 
       // Render histogram as inline SVG bars. Width fixed at 512 (2px/bin).
@@ -1397,19 +1467,44 @@ function initDDHVisualization(): void {
 
       const expectedY = h - (expected / max) * (h - 24) - 16;
 
+      // Strictest test first: the α = 0.05 band is the narrower one.
       const verdict =
-        res.chiSq >= CRIT.p01_lo && res.chiSq <= CRIT.p01_hi
-          ? { msg: 'Distribution is consistent with uniform (cannot reject H₀ at α = 0.01).', cls: 'ok' }
-          : res.chiSq >= CRIT.p05_lo && res.chiSq <= CRIT.p05_hi
-          ? { msg: 'Distribution is consistent with uniform (cannot reject H₀ at α = 0.05).', cls: 'ok' }
-          : { msg: 'Distribution differs from uniform at α = 0.05 (unusual — re-run to check).', cls: 'warn' };
+        res.chiSq >= CRIT.p05_lo && res.chiSq <= CRIT.p05_hi
+          ? { msg: 'Consistent with uniform — cannot reject H₀ even at α = 0.05, the stricter of the two tests.', cls: 'ok' }
+          : res.chiSq >= CRIT.p01_lo && res.chiSq <= CRIT.p01_hi
+          ? { msg: 'Borderline — outside the α = 0.05 band but inside the α = 0.01 band. Rejected at α = 0.05, not rejected at α = 0.01. One run in twenty lands here by chance; re-sample.', cls: 'warn' }
+          : { msg: 'Rejected at α = 0.01 — outside both acceptance bands. One run in a hundred lands here by chance; if it repeats, something is structurally non-uniform.', cls: 'warn' };
+
+      // The two constrained bytes, drawn at half width so the shape of the
+      // constraint is the thing you see: byte 0 is a comb (evens only), byte
+      // 31 is a block that stops dead at bin 128.
+      const miniChart = (hist: number[], label: string, aria: string): string => {
+        const mw = 256;
+        const mh = 70;
+        const mmax = Math.max(...hist, 1);
+        const mbw = mw / 256;
+        const mbars = hist
+          .map((v, i) => {
+            const bh = (v / mmax) * (mh - 14);
+            return `<rect x="${i * mbw}" y="${mh - bh - 10}" width="${Math.max(mbw - 0.15, 0.35)}" height="${bh}" fill="var(--bob)" opacity="0.8"></rect>`;
+          })
+          .join('');
+        return `
+          <figure class="ddh-mini">
+            <svg viewBox="0 0 ${mw} ${mh}" role="img" aria-label="${esc(aria)}">
+              ${mbars}
+              <line x1="128" y1="0" x2="128" y2="${mh - 10}" stroke="var(--text-muted)" stroke-dasharray="3 3" stroke-width="0.8"></line>
+            </svg>
+            <figcaption>${label}</figcaption>
+          </figure>`;
+      };
 
       out.innerHTML = `
         <div class="card">
-          <div class="card-section-label">Byte-frequency histogram of α·H(x) for ${res.count.toLocaleString()} fresh x</div>
+          <div class="card-section-label">Byte-frequency histogram of α·H(x) for ${res.count.toLocaleString()} fresh x — byte positions 1–30</div>
           <div class="ddh-chart-wrap">
             <svg class="ddh-chart" viewBox="0 0 ${w} ${h}" role="img"
-              aria-label="Histogram of byte values 0 to 255 from ${res.totalBytes.toLocaleString()} ristretto255 output bytes; bars near horizontal line indicate uniform distribution.">
+              aria-label="Histogram of byte values 0 to 255 from ${res.totalBytes.toLocaleString()} ristretto255 output bytes taken from byte positions 1 through 30; bars near horizontal line indicate uniform distribution.">
               <line x1="0" y1="${expectedY}" x2="${w}" y2="${expectedY}"
                 stroke="var(--match)" stroke-dasharray="4 3" stroke-width="1.5"></line>
               ${bars}
@@ -1420,23 +1515,61 @@ function initDDHVisualization(): void {
             </svg>
           </div>
           <div class="info-grid">
-            <span class="info-label">Samples (32 bytes each):</span>
-            <span class="info-value">${res.count.toLocaleString()} ⇒ ${res.totalBytes.toLocaleString()} byte observations</span>
+            <span class="info-label">Samples:</span>
+            <span class="info-value">${res.count.toLocaleString()} points × ${res.bytesPerSample} unconstrained bytes ⇒ ${res.totalBytes.toLocaleString()} observations</span>
             <span class="info-label">α (fresh, this run):</span>
             <span class="info-value mono-cell">${esc(res.sampleAlphaHex)}</span>
             <span class="info-label">Chi-square statistic (df = 255):</span>
             <span class="info-value">${res.chiSq.toFixed(2)}</span>
-            <span class="info-label">α = 0.05 acceptance range:</span>
+            <span class="info-label">α = 0.05 acceptance range (2.5–97.5%):</span>
             <span class="info-value">${CRIT.p05_lo.toFixed(2)} … ${CRIT.p05_hi.toFixed(2)}</span>
-            <span class="info-label">α = 0.01 acceptance range:</span>
+            <span class="info-label">α = 0.01 acceptance range (0.5–99.5%):</span>
             <span class="info-value">${CRIT.p01_lo.toFixed(2)} … ${CRIT.p01_hi.toFixed(2)}</span>
           </div>
           <div class="status ${verdict.cls}">${esc(verdict.msg)}</div>
           <div class="status info">
             This is the operational consequence of DDH: for any x ∉ A ∩ B,
             the value α·H(x) that an honest-but-curious Bob receives is
-            computationally indistinguishable from a uniform ristretto point —
-            so its byte-wise marginals are flat to within sampling noise.
+            computationally indistinguishable from a uniform group element.
+            Across the 30 unconstrained byte positions, its marginals are flat
+            to within sampling noise.
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:0.75rem">
+          <div class="card-section-label">Why 1–30 and not 0–31: the encoding is not uniform bytes</div>
+          <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 0.75rem">
+            Two of the 32 byte positions are pinned by RFC 9496 and can never be
+            flat. Both were measured on this run, not assumed:
+          </p>
+          <div class="ddh-mini-row">
+            ${miniChart(res.byte0Histogram, 'byte 0 — even values only', `Histogram of byte 0 across ${res.count} ristretto encodings: every other bin is empty, because byte 0 is always even.`)}
+            ${miniChart(res.byte31Histogram, 'byte 31 — never reaches 0x80', `Histogram of byte 31 across ${res.count} ristretto encodings: all mass is below bin 128, because the high bit is always clear.`)}
+          </div>
+          <div class="info-grid" style="margin-top:0.75rem">
+            <span class="info-label">Byte 0 odd (should be 0):</span>
+            <span class="info-value ${res.byte0Odd === 0 ? 'match' : 'private'}">${res.byte0Odd} of ${res.count.toLocaleString()}</span>
+            <span class="info-label">Byte 31 ≥ 0x80 (should be 0):</span>
+            <span class="info-value ${res.byte31HighBit === 0 ? 'match' : 'private'}">${res.byte31HighBit} of ${res.count.toLocaleString()}</span>
+          </div>
+          <div class="status info">
+            A ristretto encoding is the canonical little-endian encoding of a
+            field element s that the standard forces to be <em>non-negative</em>
+            — meaning even — and s &lt; 2²⁵⁵ − 19, so the top bit is clear. Byte
+            0 therefore takes 128 of its 256 values and byte 31 never reaches
+            0x80. That second constraint is the same fact Attack 4 exercises
+            from the other side, where an encoding with the high bit set is
+            injected and rejected.
+            <br><br>
+            Pooling all 32 positions into one histogram at this sample size adds
+            roughly 310 of systematic χ² on top of the ~255 of genuine noise —
+            a total near 560, outside every band printed above, with a visible
+            step at bin 128. The exhibit would have failed itself, and for the
+            wrong reason. The lesson worth keeping is not "the bytes are flat"
+            but the sharper one: pseudorandomness of the group element does not
+            mean uniformity of the encoding, and if you need uniform bytes out
+            of a ristretto point — a key, a nonce, an IV — you hash it. That is
+            exactly what OPRF-PSI's H₂ does before publishing a tag.
           </div>
         </div>`;
     } catch (err) {
@@ -1494,14 +1627,20 @@ appEl.innerHTML = `
     prayer partners are already on the app? The naive solution sends your entire address
     book to the server — a privacy violation. PSI solves this.
   </p>
+  <p class="status info">
+    <strong>You are looking at both sides at once.</strong> That is the lab's omniscient
+    view, not any participant's: Alice never sees the server's user database and the server
+    never sees Alice's address book. Read the two columns as the ground truth the protocol
+    is <em>not</em> allowed to reveal.
+  </p>
   <div class="card-row">
     <div>
-      <div class="set-label alice">Your Contacts (Alice)</div>
-      <ul id="e1-alice-list" class="element-list" aria-label="Alice's contacts"></ul>
+      <div class="set-label alice">Your Contacts (Alice) <span class="omniscient-tag">omniscient view</span></div>
+      <ul id="e1-alice-list" class="element-list" aria-label="Alice's contacts — omniscient view, not visible to the server"></ul>
     </div>
     <div>
-      <div class="set-label bob">App User Database (Bob / Server)</div>
-      <ul id="e1-bob-list" class="element-list" aria-label="Server's user database"></ul>
+      <div class="set-label bob">App User Database (Bob / Server) <span class="omniscient-tag">omniscient view</span></div>
+      <ul id="e1-bob-list" class="element-list" aria-label="Server's user database — omniscient view, not visible to Alice"></ul>
     </div>
   </div>
   <div style="margin-top:1rem">
@@ -1606,7 +1745,13 @@ appEl.innerHTML = `
       Malicious Bob (or a network attacker) submits crafted 32-byte values
       instead of legitimate group points: the identity, low-order torsion
       points, non-canonical encodings, garbage. On raw Ed25519/Curve25519
-      these enable real attacks; ristretto255 is designed to reject them.
+      these enable real attacks; ristretto255 removes most of the class by
+      construction — but not the identity, which encodes and decodes perfectly
+      well and collapses every Y_i to O. Each probe is therefore run twice:
+      once through <code>isValidPoint</code> on its own, and once through
+      <code>psi.ts</code>'s <code>bobRound2</code>, the function a real session
+      calls when X_i arrives. Only the second column is evidence about the
+      protocol.
     </p>
     <button id="e4-a4-run" type="button" class="btn danger">Probe Input Validation</button>
     <div id="e4-a4-output" aria-live="polite" aria-atomic="true"></div>

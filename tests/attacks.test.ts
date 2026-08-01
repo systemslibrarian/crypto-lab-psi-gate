@@ -29,24 +29,30 @@ describe('attack simulations', () => {
     expect(r.coveragePercent).toBe(Math.round((2 / 3) * 100));
   });
 
-  it('replay attack: linkedYCount equals stable elements when α is reused', () => {
+  it('replay attack: linkedXCount equals stable elements when α is reused', () => {
     const s1 = ['alice', 'bob', 'carol'];
     const s2 = ['alice', 'bob', 'dave']; // carol removed, dave added
     const B = ['alice', 'service'];
     const alpha = randomScalar();
     const r = simulateReplayAttack(s1, s2, B, alpha);
-    // Two stable: alice, bob. Bob should see exactly two byte-identical Y_i.
-    expect(r.linkedYCount).toBe(2);
+    // Two stable: alice, bob. Bob should see exactly two byte-identical X_i.
+    expect(r.linkedXCount).toBe(2);
     expect(r.addedElements).toBe(1);
     expect(r.removedElements).toBe(1);
     expect(r.bobInfersAliceChange).toBe(true);
 
-    // Spot-check: the byte-identical Y values must be the ones for 'alice' and 'bob'.
-    const expectedY = ['alice', 'bob']
-      .map((el) => pointToHex(scalarMul(alpha, hashToPoint(el))))
+    // PROVENANCE: the linked samples must be prefixes of α·H(el) under the α
+    // that was passed IN — not some other execution's scalar. This is the
+    // assertion that fails if the simulation ever goes back to computing its
+    // displayed values with a freshly drawn α.
+    const expectedPrefixes = ['alice', 'bob']
+      .map((el) => pointToHex(scalarMul(alpha, hashToPoint(el))).slice(0, 16) + '…')
       .sort();
-    expect(r.linkedYSamples.length).toBeGreaterThan(0);
-    expect(expectedY.length).toBe(2);
+    expect([...r.linkedXSamples].sort()).toEqual(expectedPrefixes);
+
+    // The displayed intersections come from those same reused-α sessions.
+    expect(r.session1Intersection).toEqual(['alice']);
+    expect(r.session2Intersection).toEqual(['alice']);
   });
 
   it('replay attack: identical sessions still reveal that α was reused', () => {
@@ -55,7 +61,27 @@ describe('attack simulations', () => {
     // No additions or removals, so under our combined check this is "no change".
     expect(r.addedElements).toBe(0);
     expect(r.removedElements).toBe(0);
-    expect(r.linkedYCount).toBe(2);
+    expect(r.linkedXCount).toBe(2);
+  });
+
+  it('malformed point injection: no encoding survives the real receive path', () => {
+    // The certificate this demo prints is about the PROTOCOL, so the test is
+    // about the protocol: nothing may reach a scalar multiplication.
+    const { probes, ristrettoVerdict } = simulateMalformedPointInjection();
+    // Only the invalid-by-construction probes are assertable: the random-bytes
+    // one decodes to a real group element ~1 time in 16, and accepting a valid
+    // point is correct.
+    const mustFail = probes.filter((p) => p.mustBeRejected);
+    expect(mustFail).toHaveLength(3);
+    for (const p of mustFail) {
+      expect(p.protocolOutcome).toBe('validated');
+    }
+    // The identity in particular decodes fine on the group level — it is caught
+    // ONLY because bobRound2 validates. If validation is ever removed from the
+    // receive path, this flips to 'accepted' and every Y_i collapses to O.
+    const identity = probes.find((p) => p.label.includes('Identity'))!;
+    expect(identity.protocolOutcome).toBe('validated');
+    expect(ristrettoVerdict).toMatch(/rejected by psi\.ts's bobRound2/);
   });
 
   it('malformed point injection: identity / non-canonical / torsion always rejected', () => {

@@ -34,6 +34,7 @@ import {
   hashToPoint,
   scalarMul,
   scalarInverse,
+  assertValidPoints,
 } from './group.js';
 
 export interface OPRFKeyMaterial {
@@ -124,6 +125,10 @@ export function oprfBobRound2(
   query: OPRFAliceRound1,
   bobKey: Scalar
 ): OPRFBobRound2 {
+  // The query is attacker-controlled. Validate before k touches any of it —
+  // an unvalidated OPRF server is a scalar-multiplication oracle on whatever
+  // encoding the client sends.
+  assertValidPoints(query.blindedElements, 'Bob received the OPRF query from Alice');
   return {
     evaluatedElements: query.blindedElements.map((X) => scalarMul(bobKey, X)),
   };
@@ -138,6 +143,9 @@ export function oprfAliceRound3(
   round2: OPRFBobRound2,
   bobPublished: Set<string>
 ): OPRFResult {
+  // Bob's evaluation arrived over the wire; α⁻¹ is about to multiply it.
+  assertValidPoints(round2.evaluatedElements, 'Alice received the OPRF evaluation from Bob');
+
   const alphaInv = scalarInverse(round1.aliceScalar);
   const intersection: string[] = [];
   for (let i = 0; i < aliceSet.length; i++) {

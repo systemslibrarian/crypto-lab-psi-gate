@@ -1513,7 +1513,7 @@ appEl.innerHTML = `
       <span class="info-label">Naive approach:</span>
       <span class="info-value private">Send all 8 contacts to server → server learns your full address book</span>
       <span class="info-label">PSI approach:</span>
-      <span class="info-value match">Cryptographically blind contacts → server learns only the intersection size</span>
+      <span class="info-value match">Cryptographically blind contacts → server learns only how many contacts you have; you compute the intersection locally</span>
     </div>
   </div>
 </section>

@@ -256,7 +256,8 @@ export function simulateMalformedPointInjection(): {
     bytesHex: pointToHex(garbage),
     accepted: isValidPoint(garbage),
     consequence:
-      'Most random 32-byte strings are not valid ristretto encodings (~50% rejection rate). ' +
+      'Most random 32-byte strings are not valid ristretto encodings (~94% rejection rate: only ' +
+      'the ~2^252 group elements out of 2^256 byte strings decode, i.e. about 1 in 16). ' +
       'A protocol that skips validation would crash on scalarMul, or worse, fall through ' +
       'to an unspecified scalar field operation.',
   });

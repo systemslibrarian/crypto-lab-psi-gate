@@ -14,8 +14,9 @@ limitations. All cryptography runs in-browser — no backends, no servers.
 
 ## When to Use It
 
-- Understanding the cryptographic primitive behind Signal contact discovery, Apple
-  password monitoring, and Google's Private Join and Compute
+- Understanding the cryptographic primitive behind Apple password monitoring and
+  Google's Private Join and Compute — and the pure-cryptography alternative to how
+  Signal solves contact discovery (Signal uses SGX enclaves plus ORAM, not PSI)
 - Teaching how two parties can compute a joint function without revealing inputs
   (the essence of secure two-party computation)
 - Learning why the Decisional Diffie-Hellman (DDH) assumption matters for PSI
@@ -24,8 +25,8 @@ limitations. All cryptography runs in-browser — no backends, no servers.
   or healthcare data sharing applications
 - Do NOT use this for production PSI — this demo is semi-honest secure only and
   doesn't include the rate limiting, proof-of-work, or set size hiding needed for
-  real deployment. Use Signal's OPRF-based PSI or Google's Private Join and Compute
-  library for production use.
+  real deployment. Use a maintained library such as Google's Private Join and Compute
+  for production use.
 
 ## Live Demo
 
@@ -57,13 +58,22 @@ The page runs the full three-round DH-PSI protocol in the browser across six exh
 The DH-PSI protocol dates to Meadows 1986 and was analyzed by Huberman, Franklin, and
 Hogg (1999). Production deployments:
 
-- **Signal** — contact discovery via SGX enclave + OPRF-based PSI
 - **Apple iOS 14+** — Password Monitoring against breach databases
 - **Google Password Checkup** — 4B+ leaked credentials, blind hashing + k-anonymity
 - **Google Private Join and Compute** — ad conversion attribution (open-source)
 - **Meta Private Lift** — advertising measurement without user-level data sharing
-- **DP3T / Google-Apple Exposure Notification** — COVID contact tracing
 - **Healthcare** — cross-hospital duplicate billing detection
+
+Two systems commonly filed under PSI that do not actually use it, and are worth
+knowing as contrasts:
+
+- **Signal contact discovery** — solves the same problem with Intel SGX enclaves and
+  an ORAM lookup, not a PSI protocol. Signal's own writeup names private set
+  intersection among the options that "don't work" for them, alongside bloom filters
+  and PIR ([Private Contact Discovery](https://signal.org/blog/private-contact-discovery/)).
+- **DP3T / Google-Apple Exposure Notification** — rolling proximity identifiers are
+  HKDF-derived from daily keys and re-derived locally on-device from downloaded
+  diagnosis keys. Decentralized, but no two-party intersection protocol runs.
 
 Modern high-performance PSI (KKRT16, PaXoS, VOLE-PSI) builds on oblivious PRF
 from oblivious transfer. The group used here (ristretto255) is the same prime-order
@@ -115,7 +125,7 @@ makes every non-colliding point unlinkable to its plaintext.
 | 2 | Protocol Walkthrough | Plain-language padlock primer, then each email tracked as a stable colour/icon chip through H(x) → single- → double-blind, until the two blinding orders of a shared element snap onto the same byte-identical point |
 | 3 | Live Simulator | Paste your own sets; run PSI instantly, with a side-by-side alignment grid of double-blinded values and a reveal-plaintext toggle |
 | 4 | Attack Demos | Set size inflation, dictionary attack, scalar reuse, malformed-point injection, malicious OPRF publication |
-| 5 | Real-World Deployments | Signal, Apple, Google, DP3T, healthcare |
+| 5 | Real-World Deployments | Apple, Google, Meta, healthcare — plus Signal and DP3T as non-PSI contrasts |
 | 6 | Cryptographer's Lab | Test vectors, wire transcript, benchmarks, security argument, PSI protocol comparison |
 
 ### Cryptographer's Lab (Exhibit 6)
@@ -152,7 +162,8 @@ For reviewers and implementers who need byte-level rigor:
 Two interoperating protocols are implemented and can be toggled in Exhibit 3:
 
 - **DH-PSI** (`src/psi.ts`) — the three-round Meadows/HFH protocol; pedagogical baseline.
-- **OPRF-PSI** (`src/oprf-psi.ts`) — Jarecki-Liu 2010; what Signal contact discovery uses
+- **OPRF-PSI** (`src/oprf-psi.ts`) — Jarecki-Liu 2010; the academic route to contact
+  discovery, as opposed to Signal's enclave-based one
   in spirit. Bob publishes PRF tags once, Alice queries with a per-query α, unblinds with α⁻¹.
 
 ## Testing

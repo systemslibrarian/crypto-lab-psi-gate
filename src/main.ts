@@ -1557,7 +1557,7 @@ appEl.innerHTML = `
     <label class="proto-option">
       <input type="radio" name="e3-proto" value="oprf">
       <span>OPRF-PSI (Jarecki-Liu 2010)</span>
-      <small>Bob publishes PRF tags once; Signal-style contact discovery</small>
+      <small>Bob publishes PRF tags once; per-query cost independent of |B|</small>
     </label>
   </fieldset>
   <div style="margin-top:0.75rem">
@@ -1632,9 +1632,10 @@ appEl.innerHTML = `
 
   <div class="deployment-grid" style="margin-top:1rem">
     <div class="deployment-card">
-      <h4>Signal — Contact Discovery</h4>
-      <p>SGX enclave + OPRF-based PSI. Processes millions of contacts per query
-      without the server learning them. Open-source: signalapp/ContactDiscoveryService.</p>
+      <h4>Signal — Contact Discovery <em>(not PSI)</em></h4>
+      <p>Intel SGX enclaves plus ORAM, not a PSI protocol — Signal ruled PSI out by name
+      and solved the same problem with attested hardware. OPRF-PSI is the academic route
+      to the same goal. Open-source: signalapp/ContactDiscoveryService-Icelake.</p>
     </div>
     <div class="deployment-card">
       <h4>Apple Password Monitoring (iOS 14+)</h4>
@@ -1653,9 +1654,10 @@ appEl.innerHTML = `
       Open-source: google/private-join-and-compute.</p>
     </div>
     <div class="deployment-card">
-      <h4>DP3T / Google-Apple Exposure Notification</h4>
-      <p>COVID-19 contact tracing via Bluetooth proximity. PSI with ephemeral IDs.
-      Decentralized — no government server sees your contacts.</p>
+      <h4>DP3T / Google-Apple Exposure Notification <em>(not PSI)</em></h4>
+      <p>COVID-19 contact tracing via Bluetooth proximity. Rolling proximity identifiers
+      are HKDF-derived from daily keys and re-derived locally on-device from downloaded
+      diagnosis keys — decentralized, but no two-party intersection protocol runs.</p>
     </div>
     <div class="deployment-card">
       <h4>Healthcare — Cross-Hospital Billing Detection</h4>
@@ -1675,7 +1677,8 @@ appEl.innerHTML = `
     <p>
       Your address book never reaches the server. The server's user database never
       reaches you. Only the intersection — prayer partners who are also on the app —
-      becomes known. This is exactly the Signal model, adapted for prayer.
+      becomes known. Signal solves the same discovery problem with attested enclaves;
+      this is the pure-cryptography route to it, adapted for prayer.
     </p>
   </div>
 
@@ -1814,7 +1817,7 @@ crypto-lab-ot-gate           — oblivious transfer (used in OPRF-PSI)</pre>
           <td>O(n + m) group elts</td>
           <td>O(n + m) scalar muls</td>
           <td>Semi-honest, one-more-DH</td>
-          <td>Signal contact discovery — DH-PSI hardened with an OPRF</td>
+          <td>DH-PSI hardened with an OPRF; the basis of VOPRF-style deployments</td>
         </tr>
         <tr>
           <th scope="row">KKRT16</th>
@@ -1825,20 +1828,20 @@ crypto-lab-ot-gate           — oblivious transfer (used in OPRF-PSI)</pre>
           <td>OT-extension based; ~10⁶ elts/sec in C++</td>
         </tr>
         <tr>
-          <th scope="row">CM20 / SpOT-Light</th>
-          <td>2020</td>
+          <th scope="row">SpOT-Light (PRTY19) / CM20</th>
+          <td>2019 / 2020</td>
           <td>O(n) bits asymptotic</td>
           <td>O(n)</td>
           <td>Semi-honest</td>
           <td>Communication-optimal for small intersection</td>
         </tr>
         <tr>
-          <th scope="row">PaXoS / VOLE-PSI</th>
-          <td>2021</td>
+          <th scope="row">PaXoS (PRTY20) / VOLE-PSI (RS21)</th>
+          <td>2020 / 2021</td>
           <td>O(n)</td>
           <td>O(n) field ops</td>
           <td>Malicious</td>
-          <td>State-of-the-art; basis for modern Signal-style deployments</td>
+          <td>State-of-the-art; malicious security at near-semi-honest cost</td>
         </tr>
         <tr>
           <th scope="row">FHE-PSI (Chen-Laine-Rindal)</th>

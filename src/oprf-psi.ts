@@ -1,5 +1,10 @@
 /**
- * OPRF-PSI (Jarecki-Liu 2010, deployed in Signal contact discovery).
+ * OPRF-PSI (Jarecki-Liu, SCN 2010).
+ *
+ * NOT what Signal deploys: Signal's contact discovery (CDS/CDSI) runs on Intel SGX
+ * enclaves with an ORAM lookup, and Signal's own writeup lists private set
+ * intersection among the approaches that did not work for them. OPRF-PSI is the
+ * academic alternative to the same problem, which is why it is worth building here.
  *
  * Bob holds a long-lived OPRF key k. He publishes (or commits to) the set
  *   F = { H₂(k·H₁(b_j)) : b_j ∈ B }

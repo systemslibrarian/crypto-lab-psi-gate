@@ -20,6 +20,7 @@
   --surface: #12121e;
   --surface2: #1a1a2e;
   --border: #2d2d44;
+  --control-border: #707090;
   --text: #e0e0ff;
   --text-muted: #9999bb;
   --radius: 8px;
@@ -51,6 +52,7 @@
   --surface: #ffffff;
   --surface2: #f0f0f8;
   --border: #c8c8dd;
+  --control-border: #707080;
   --text: #14142b;
   --text-muted: #44447a;
   --focus: #006d8f;
@@ -342,7 +344,7 @@ p {
 textarea {
   width: 100%;
   background: var(--surface2);
-  border: 1px solid var(--border);
+  border: 1px solid var(--control-border);
   border-radius: var(--radius);
   color: var(--text);
   font-family: var(--mono);

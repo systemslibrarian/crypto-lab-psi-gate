@@ -140,6 +140,10 @@ async function scanWalkthroughSteps(page: Page): Promise<void> {
 
 test.beforeEach(async ({ page }) => {
   await page.goto('.');
+  await page.evaluate(() => {
+    localStorage.setItem('theme', 'dark');
+    document.documentElement.setAttribute('data-theme', 'dark');
+  });
   // App is rendered by main.ts; wait for the shared header toggle + first tab.
   await expect(page.locator('#cl-theme-toggle')).toBeVisible();
   await expect(page.locator('#tab-1')).toBeVisible();
@@ -156,7 +160,10 @@ test('no WCAG A/AA violations in dark theme (all demos driven)', async ({ page }
 });
 
 test('no WCAG A/AA violations in light theme (all demos driven)', async ({ page }) => {
-  await page.locator('#cl-theme-toggle').click();
+  await page.evaluate(() => {
+    localStorage.setItem('theme', 'light');
+    document.documentElement.setAttribute('data-theme', 'light');
+  });
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await driveDemos(page);
   await scanWalkthroughSteps(page);

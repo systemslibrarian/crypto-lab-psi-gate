@@ -54,11 +54,11 @@ jobs:
 
       - name: Serve dist and run axe
         run: |
-          npx --yes serve dist -p 4173 -s -L &
+          npx --yes serve dist -p 4707 -s -L &
           SERVE_PID=$!
-          npx --yes wait-on -t 30000 http://localhost:4173
+          npx --yes wait-on -t 30000 http://localhost:4707
           # WCAG 2.1 A + AA; --exit makes any violation fail the job.
-          npx --yes @axe-core/cli http://localhost:4173 \
+          npx --yes @axe-core/cli http://localhost:4707 \
             --tags wcag2a,wcag2aa,wcag21a,wcag21aa \
             --exit
           kill $SERVE_PID

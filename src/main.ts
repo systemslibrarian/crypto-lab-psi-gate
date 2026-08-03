@@ -791,6 +791,30 @@ function initExhibit3(): void {
       runBtn.textContent = 'Run PSI';
     }
   });
+
+  // Editing either set — or switching protocol — retracts the previous verdict.
+  // The result panel names concrete set sizes, prints "Correct (verified) ✓",
+  // and the alignment grid under it invites a byte-for-byte comparison; every
+  // one of those was computed from the inputs as they stood at click time.
+  // Left standing over edited inputs it is a verdict about a run the page is no
+  // longer describing — "Alice's elements: 10" above a box holding one line.
+  const retractResult = (): void => {
+    if (output.innerHTML === '') return;
+    // Supersede any run still in flight. An aborted run deliberately returns
+    // early so it cannot paint over newer state, which also means it never
+    // re-enables the button — so hand the control back here, or a run cancelled
+    // by a keystroke would leave "Run PSI" permanently disabled.
+    inFlight?.abort();
+    inFlight = null;
+    output.innerHTML = '';
+    runBtn.disabled = false;
+    runBtn.textContent = 'Run PSI';
+  };
+  aliceTa.addEventListener('input', retractResult);
+  bobTa.addEventListener('input', retractResult);
+  document
+    .querySelectorAll<HTMLInputElement>('input[name="e3-proto"]')
+    .forEach((radio) => radio.addEventListener('change', retractResult));
 }
 
 // Note (Exhibit 3 protocol picker): the radio inputs live in the HTML

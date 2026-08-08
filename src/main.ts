@@ -641,15 +641,15 @@ function initExhibit3(): void {
         <div class="align-grid">
           <div>
             <div class="set-label alice">Alice: Y_i (βα·H)</div>
-            <ul class="align-list" tabindex="0" role="region" aria-label="Alice's double-blinded values">
-              ${aliceRows.map(row).join('')}
-            </ul>
+            <div class="align-scroll" tabindex="0" role="region" aria-label="Alice's double-blinded values">
+              <ul class="align-list">${aliceRows.map(row).join('')}</ul>
+            </div>
           </div>
           <div>
             <div class="set-label bob">Bob: W_j (αβ·H)</div>
-            <ul class="align-list" tabindex="0" role="region" aria-label="Bob's double-blinded values">
-              ${bobRows.map(row).join('')}
-            </ul>
+            <div class="align-scroll" tabindex="0" role="region" aria-label="Bob's double-blinded values">
+              <ul class="align-list">${bobRows.map(row).join('')}</ul>
+            </div>
           </div>
         </div>
         <p class="align-legend"><span class="align-tick" aria-hidden="true">✓</span> = byte-identical on both sides = in the intersection.</p>
@@ -1853,7 +1853,7 @@ appEl.innerHTML = `
 
   <div class="card" style="margin-top:1rem">
     <h3>Related Crypto Labs</h3>
-    <pre aria-label="Related crypto lab projects">crypto-lab-opaque-gate       — aPAKE (authentication, related primitive)
+    <pre role="region" tabindex="0" aria-label="Related crypto lab projects">crypto-lab-opaque-gate       — aPAKE (authentication, related primitive)
 crypto-lab-silent-tally      — private aggregation
 crypto-lab-blind-oracle      — TFHE (general-purpose PSI via FHE)
 crypto-lab-oblivious-shelf   — PIR (private information retrieval)

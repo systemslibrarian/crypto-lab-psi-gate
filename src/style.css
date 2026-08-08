@@ -8,6 +8,10 @@
   --blinded: #ffd700;
   --double-blinded: #b478e6;
   --match: #00ff88;
+  /* Text-only step of --match. The matched rows tint their own background
+     TOWARD --match (10%), so using --match as the ink on top made the two
+     converge; this is the same-hue-tint trap. */
+  --match-ink: #7dffc0;
   --no-match: #8f8faf;
   --private: #ff3366;
   /* Darker private/red for use as a *button fill* (white ink on top needs
@@ -44,6 +48,7 @@
   --blinded: #8a6a00;
   --double-blinded: #5a1e9a;
   --match: #00794a;
+  --match-ink: #005c38;
   --no-match: #6a6a7a;
   --private: #b8002d;
   --warning: #8a5200;
@@ -1012,13 +1017,15 @@ footer {
   font-size: 0.78rem;
   font-weight: 400;
   line-height: 1.35;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 0.15s;
+  /* `display: none`, not `visibility: hidden`: a hidden-but-laid-out box still
+     contributes to the document's scroll width, and this 304px popover pushed
+     the page to 542px at a 380px viewport (WCAG 1.4.10) — an overflow caused by
+     an element nobody can see. Taking it out of flow costs the 150ms fade. */
+  display: none;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
 }
 .e2-term:hover .e2-term-def,
-.e2-term:focus-within .e2-term-def { opacity: 1; visibility: visible; }
+.e2-term:focus-within .e2-term-def { display: block; }
 
 /* Identity chips */
 .e2-chip-list {
@@ -1175,16 +1182,22 @@ footer {
 }
 .align-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 @media (max-width: 540px) { .align-grid { grid-template-columns: 1fr; } }
+/* The scroll region and its keyboard route live on a wrapper, not on the <ul>.
+   Putting `role="region"` on the list itself replaced its list semantics, which
+   orphaned every <li> inside it — axe's `listitem` rule caught exactly that. */
+.align-scroll {
+  max-height: 22rem;
+  overflow: auto;
+}
+.align-scroll:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .align-list {
   list-style: none;
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-  max-height: 22rem;
-  overflow: auto;
+  margin: 0;
   padding: 0.15rem;
 }
-.align-list:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .align-row {
   display: flex;
   align-items: center;
@@ -1211,7 +1224,7 @@ footer {
 .align-tick.empty { color: transparent; }
 .align-hex, .align-plain { word-break: break-all; }
 .align-row.matched .align-hex,
-.align-row.matched .align-plain { color: var(--match); }
+.align-row.matched .align-plain { color: var(--match-ink); }
 .align-legend {
   margin-top: 0.6rem;
   font-size: 0.78rem;

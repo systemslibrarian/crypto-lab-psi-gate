@@ -23,12 +23,8 @@ async function textareaContrast(page: Page): Promise<number> {
   return contrast(colors.border, colors.background);
 }
 
-test('load-bearing set-input boundary clears 3:1 in dark and light themes', async ({ page }) => {
+test('load-bearing set-input boundary clears 3:1', async ({ page }) => {
   await page.goto('.');
-  await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
-  expect(await textareaContrast(page)).toBeGreaterThanOrEqual(3);
-
-  await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   expect(await textareaContrast(page)).toBeGreaterThanOrEqual(3);
 });

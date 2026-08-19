@@ -52,6 +52,40 @@ jobs:
       - name: Build production bundle
         run: npm run build
 
+      # @axe-core/cli depends on `chromedriver: latest`, so `npx` pulls whichever
+      # driver matches the newest Chrome release, while the runner image carries
+      # whatever Chrome was stable when the image was built. The moment the driver
+      # runs ahead of the browser the session never opens ("This version of
+      # ChromeDriver only supports Chrome version 152 / Current browser version is
+      # 151..."), and axe exits 2 without auditing anything. Resolve a driver that
+      # matches the Chrome actually installed here and hand axe that binary.
+      - name: Resolve a ChromeDriver matching this runner's Chrome
+        id: chromedriver
+        run: |
+          CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || echo /opt/google/chrome/chrome)"
+          CHROME_VERSION="$("$CHROME_BIN" --version)"
+          CHROME_MAJOR="$(printf '%s' "$CHROME_VERSION" | grep -oE '[0-9]+' | head -1)"
+          echo "Chrome: $CHROME_VERSION (major $CHROME_MAJOR)"
+          # The runner image ships a Chrome/ChromeDriver pair built together and
+          # points CHROMEWEBDRIVER at it; prefer that, and only download a driver
+          # when it is absent or has drifted off the browser's major.
+          DRIVER=""
+          if [ -x "${CHROMEWEBDRIVER:-}/chromedriver" ]; then
+            CANDIDATE="$CHROMEWEBDRIVER/chromedriver"
+            CANDIDATE_MAJOR="$("$CANDIDATE" --version | grep -oE '[0-9]+' | head -1)"
+            if [ "$CANDIDATE_MAJOR" = "$CHROME_MAJOR" ]; then
+              DRIVER="$CANDIDATE"
+            else
+              echo "Pre-installed driver is major $CANDIDATE_MAJOR, browser is $CHROME_MAJOR; fetching a match."
+            fi
+          fi
+          if [ -z "$DRIVER" ]; then
+            npm install --no-save --no-package-lock "chromedriver@^${CHROME_MAJOR}.0.0"
+            DRIVER="$(node -p "require('chromedriver').path")"
+          fi
+          echo "ChromeDriver: $("$DRIVER" --version) at $DRIVER"
+          echo "path=$DRIVER" >> "$GITHUB_OUTPUT"
+
       - name: Serve dist and run axe
         run: |
           npx --yes serve dist -p 4707 -s -L &
@@ -60,5 +94,6 @@ jobs:
           # WCAG 2.1 A + AA; --exit makes any violation fail the job.
           npx --yes @axe-core/cli http://localhost:4707 \
             --tags wcag2a,wcag2aa,wcag21a,wcag21aa \
+            --chromedriver-path "${{ steps.chromedriver.outputs.path }}" \
             --exit
           kill $SERVE_PID

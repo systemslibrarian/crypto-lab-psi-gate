@@ -101,6 +101,13 @@ export async function boot(page: Page, theme: 'dark' | 'light'): Promise<void> {
     'reduced-motion emulation must actually be in effect'
   ).toBe(true);
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+  // The pinned theme is the only theme: this lab's own toggle was deleted, not
+  // hidden, so no theme control may be built at all. Asserting absence in the
+  // DOM (not just invisibility) is the point — a display:none rule is what this
+  // used to rest on.
+  await expect(
+    page.locator('#theme-toggle, .theme-toggle, [data-theme-toggle], #cl-theme-toggle')
+  ).toHaveCount(0);
 
   await expect(page.locator('#tab-1')).toBeVisible();
   await expect(page.locator('[role="tab"]')).toHaveCount(6);

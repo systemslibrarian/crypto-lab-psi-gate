@@ -38,35 +38,6 @@ function truncateHex(h: string, n = 16): string {
 }
 
 // ---------------------------------------------------------------------------
-// Theme toggle
-// ---------------------------------------------------------------------------
-
-function initThemeToggle(): void {
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'theme-toggle';
-  const icon = document.createElement('span');
-  icon.setAttribute('aria-hidden', 'true');
-  icon.textContent = '☀ / ☾';
-  btn.appendChild(icon);
-  const updateLabel = (): void => {
-    const current = document.documentElement.getAttribute('data-theme') ?? 'dark';
-    const label = `Switch to ${current === 'dark' ? 'light' : 'dark'} theme`;
-    btn.setAttribute('aria-label', label);
-    btn.setAttribute('title', label);
-  };
-  updateLabel();
-  btn.addEventListener('click', () => {
-    const current = document.documentElement.getAttribute('data-theme');
-    const next = current === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', next);
-    localStorage.setItem('theme', next);
-    updateLabel();
-  });
-  document.body.appendChild(btn);
-}
-
-// ---------------------------------------------------------------------------
 // Tab routing (ARIA-compliant with keyboard navigation)
 // ---------------------------------------------------------------------------
 
@@ -2041,7 +2012,6 @@ crypto-lab-ot-gate           — oblivious transfer (used in OPRF-PSI)</pre>
 `;
 
 // Initialize all exhibits
-initThemeToggle();
 initTabs();
 initExhibit1();
 initExhibit2();

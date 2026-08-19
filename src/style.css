@@ -571,25 +571,6 @@ footer {
   font-size: 0.82rem;
 }
 
-/* ── Theme toggle ── */
-.theme-toggle {
-  position: fixed;
-  top: 0.75rem;
-  right: 0.75rem;
-  padding: 0.4rem 0.7rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: 0.8rem;
-  min-height: 44px;
-  min-width: 44px;
-  z-index: 100;
-}
-
-.theme-toggle:hover { border-color: var(--alice); color: var(--text); }
-
 /* ── Security badge ── */
 .security-note {
   display: inline-block;

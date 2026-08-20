@@ -3,6 +3,11 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
+  # Needed because a merge made with GITHUB_TOKEN raises no push event -- GitHub
+  # suppresses them so workflows cannot retrigger themselves. Without this the
+  # dependabot auto-merge lands a bump on main and the live site never rebuilds,
+  # and a human cannot re-deploy by hand either.
+  workflow_dispatch:
 
 permissions:
   contents: read

@@ -6,7 +6,7 @@ import {
   simulateMalformedPointInjection,
   simulateMaliciousOprfBob,
 } from '../src/attacks.js';
-import { randomScalar, hashToPoint, scalarMul, pointToHex } from '../src/group.js';
+import { randomScalar, hashToPoint, scalarMul, pointToHex, isValidPoint } from '../src/group.js';
 
 describe('attack simulations', () => {
   it('set-size inflation reports the inflated count and a correct intersection', () => {
@@ -97,18 +97,31 @@ describe('attack simulations', () => {
     expect(byLabel['Order-2 point (raw Curve25519 torsion)']!.accepted).toBe(false);
   });
 
-  it('malformed point injection: random-bytes acceptance rate is below 10%', () => {
-    // Statistical sanity: ristretto encoding density is ~6% of 2^256 strings.
-    // Across 50 fresh probes we should see at most a handful accepted.
+  it('malformed point injection: random 32-byte strings decode at the expected 1/16 rate', () => {
+    // A random 32-byte string is a valid ristretto255 encoding with probability
+    // about 1/16: the top bit must be clear, s must be non-negative, the square
+    // root must exist, and t must be non-negative (each about 1/2). Measured over
+    // 200,000 strings: 6.18%.
+    //
+    // This used to sample 50 strings and require under 15%. At a true rate of
+    // 6.25% that fails about one run in a hundred (8 of 50 accepted), and it did
+    // on main once the test became part of the deploy gate. 4,000 samples give a
+    // standard deviation of about 0.38 points, so the band below sits more than
+    // four deviations from 1/16 on each side: a false failure is negligible, and
+    // a decoder that accepts everything, or nothing, still fails at once.
+    const TRIALS = 4000;
+    const bytes = new Uint8Array(32);
     let accepted = 0;
-    const TRIALS = 50;
     for (let i = 0; i < TRIALS; i++) {
-      const probes = simulateMalformedPointInjection().probes;
-      const rnd = probes.find((p) => p.label.includes('Random'));
-      if (rnd?.accepted) accepted++;
+      crypto.getRandomValues(bytes);
+      if (isValidPoint(bytes)) accepted++;
     }
-    // 10% upper bound is generous; observed empirical rate is ~4%.
-    expect(accepted / TRIALS).toBeLessThan(0.15);
+    const rate = accepted / TRIALS;
+    expect(rate).toBeGreaterThan(0.045);
+    expect(rate).toBeLessThan(0.08);
+    // The probe the lab shows is the same check on one random string.
+    const rnd = simulateMalformedPointInjection().probes.find((p) => p.label.includes('Random'));
+    expect(rnd).toBeDefined();
   });
 
   it('malicious OPRF Bob: inflated F yields false positives Alice cannot detect', () => {

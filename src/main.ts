@@ -1497,7 +1497,7 @@ function initDDHVisualization(): void {
       out.innerHTML = `
         <div class="card">
           <div class="card-section-label">Byte-frequency histogram of α·H(x) for ${res.count.toLocaleString()} fresh x — byte positions 1–30</div>
-          <div class="ddh-chart-wrap">
+          <div class="ddh-chart-wrap" tabindex="0" role="region" aria-label="Byte-frequency histogram, scrolls sideways on narrow screens">
             <svg class="ddh-chart" viewBox="0 0 ${w} ${h}" role="img"
               aria-label="Histogram of byte values 0 to 255 from ${res.totalBytes.toLocaleString()} ristretto255 output bytes taken from byte positions 1 through 30; bars near horizontal line indicate uniform distribution.">
               <line x1="0" y1="${expectedY}" x2="${w}" y2="${expectedY}"

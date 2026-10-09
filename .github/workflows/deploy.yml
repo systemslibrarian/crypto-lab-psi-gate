@@ -137,9 +137,15 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Accessibility gate (axe-core, WCAG A/AA)
         run: npm run test:a11y
+      - name: Verify built security contact
+        run: cmp public/.well-known/security.txt dist/.well-known/security.txt
+
       - uses: actions/upload-pages-artifact@v5
         with:
           path: dist
+          # Only the built public directory is uploaded. v5 otherwise drops
+          # .well-known/security.txt even when Vite copied it successfully.
+          include-hidden-files: true
 
   deploy:
     # A pull request is gated, never published. NOT `== 'push'`: that would
@@ -153,6 +159,19 @@ jobs:
     steps:
       - uses: actions/deploy-pages@v5
         id: deployment
+
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Verify published security contact
+        env:
+          PAGES_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          curl --fail --show-error --silent --location \
+            --retry 10 --retry-delay 5 --retry-all-errors --max-time 15 \
+            "${PAGES_URL%/}/.well-known/security.txt" \
+            --output "$RUNNER_TEMP/psi-security.txt"
+          cmp public/.well-known/security.txt "$RUNNER_TEMP/psi-security.txt"
 
   # Dependabot only. `needs: [test, a11y, build]` is the whole safety argument -- a bump can
   # merge itself only once this lab's entire PR gate went green, so the gate

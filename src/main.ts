@@ -21,6 +21,7 @@ import {
 } from './attacks.js';
 import { runOPRFPSI } from './oprf-psi.js';
 import { callWorker, workerSupported } from './worker-client.js';
+import { uniqueElements } from './set-utils.js';
 
 // ---------------------------------------------------------------------------
 // Utilities
@@ -628,8 +629,8 @@ function initExhibit3(): void {
   }
 
   runBtn.addEventListener('click', async () => {
-    const aliceSet = aliceTa.value.split('\n').map((s) => s.trim()).filter(Boolean);
-    const bobSet = bobTa.value.split('\n').map((s) => s.trim()).filter(Boolean);
+    const aliceSet = uniqueElements(aliceTa.value.split('\n').map((s) => s.trim()).filter(Boolean));
+    const bobSet = uniqueElements(bobTa.value.split('\n').map((s) => s.trim()).filter(Boolean));
 
     if (aliceSet.length === 0 || bobSet.length === 0) {
       output.innerHTML = '<div class="status error">Both sets must be non-empty.</div>';
@@ -642,7 +643,7 @@ function initExhibit3(): void {
       )?.value ?? 'dh') === 'oprf'
         ? 'oprf'
         : 'dh';
-    const protoLabel = proto === 'oprf' ? 'OPRF-PSI (Jarecki-Liu)' : 'DH-PSI (Meadows)';
+    const protoLabel = proto === 'oprf' ? 'Basic OPRF-PSI' : 'DH-PSI (Meadows)';
 
     // Supersede any earlier run before starting this one.
     inFlight?.abort();
@@ -832,23 +833,22 @@ function initExhibit4(): void {
   const a2Output = document.getElementById('e4-a2-output') as HTMLDivElement;
 
   a2Btn.addEventListener('click', () => {
-    // Alice's set is from a small domain — 4-digit PINs (Alice uses only 3)
-    const aliceSet = ['1234', '5678', '9999'];
-    // Bob enumerates 0000–0099 + some guesses
+    // Malicious Alice enumerates a small domain; Bob has three PIN-like values.
     const dictionary = Array.from({ length: 100 }, (_, i) =>
       i.toString().padStart(4, '0')
-    ).concat(['1234', '5678', '9999', '0000', '1111']);
+    ).concat(['1234', '5678', '9999', '1111']);
+    const bobSet = ['1234', '5678', '9999'];
 
-    const result = simulateDictionaryAttack(aliceSet, dictionary);
+    const result = simulateDictionaryAttack(dictionary, bobSet);
     a2Output.innerHTML = `
       <div class="result-box">
         <div class="info-grid">
-          <span class="info-label">Alice's set size:</span>
-          <span class="info-value alice">${aliceSet.length}</span>
-          <span class="info-label">Bob's dictionary size:</span>
-          <span class="info-value bob">${dictionary.length}</span>
-          <span class="info-label">Alice's elements learned by Bob:</span>
-          <span class="info-value private">${result.aliceElementsLearned.join(', ') || '∅'}</span>
+          <span class="info-label">Alice's dictionary size:</span>
+          <span class="info-value alice">${dictionary.length}</span>
+          <span class="info-label">Bob's set size:</span>
+          <span class="info-value bob">${bobSet.length}</span>
+          <span class="info-label">Bob's elements learned by Alice:</span>
+          <span class="info-value private">${result.bobElementsLearned.join(', ') || '∅'}</span>
           <span class="info-label">Coverage:</span>
           <span class="info-value warning">${result.coveragePercent}%</span>
         </div>
@@ -1027,7 +1027,7 @@ function initExhibit4(): void {
 }
 
 // ---------------------------------------------------------------------------
-// Exhibit 5 — Real-World Deployments
+// Exhibit 5 — deployments and application patterns
 // ---------------------------------------------------------------------------
 
 function initExhibit5(): void {
@@ -1188,8 +1188,9 @@ function initExhibit6(): void {
       </div>
       <div class="status ok">
         Expected intersection: {${trace.intersection.join(', ')}} —
-        any conforming DH-PSI/ristretto255 implementation MUST produce
-        the same X, Y, Z, W byte strings given these inputs.
+        any implementation of this exact PSI-GATE-v1 profile (including its
+        custom DST and scalar encoding) MUST produce the same X, Y, Z, W byte
+        strings given these inputs. Generic DH-PSI implementations need not.
       </div>
       <div style="margin-top:0.75rem;display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center">
         <button id="e6-tv-copy" type="button" class="btn"
@@ -1690,7 +1691,7 @@ appEl.innerHTML = `
     </label>
     <label class="proto-option">
       <input type="radio" name="e3-proto" value="oprf">
-      <span>OPRF-PSI (Jarecki-Liu 2010)</span>
+      <span>Basic OPRF-PSI (inspired by JL10)</span>
       <small>Bob publishes PRF tags once; per-query cost independent of |B|</small>
     </label>
   </fieldset>
@@ -1717,8 +1718,9 @@ appEl.innerHTML = `
   <div class="card">
     <h3>Attack 2 — Dictionary Attack on Small Domains</h3>
     <p>
-      If Alice's elements come from a small domain (4-digit PINs, short codes),
-      Bob can enumerate the entire domain as his set and learn Alice's full set.
+      If Bob's elements come from a small domain (4-digit PINs, short codes),
+      malicious Alice can submit that whole domain as her set and learn Bob's
+      matching elements from the intersection returned to her.
     </p>
     <button id="e4-a2-run" type="button" class="btn danger">Simulate Dictionary Attack</button>
     <div id="e4-a2-output" aria-live="polite" aria-atomic="true"></div>
@@ -1767,42 +1769,53 @@ appEl.innerHTML = `
 
 <!-- ── Exhibit 5 ── -->
 <section id="exhibit-5" role="tabpanel" aria-labelledby="tab-5" class="exhibit">
-  <h2>Real-World PSI Deployments</h2>
+  <h2>PSI Deployments and Application Patterns</h2>
   <div id="e5-selftest" aria-live="polite" aria-atomic="true"></div>
 
   <div class="deployment-grid" style="margin-top:1rem">
     <div class="deployment-card">
       <h4>Signal — Contact Discovery <em>(not PSI)</em></h4>
-      <p>Intel SGX enclaves plus ORAM, not a PSI protocol — Signal ruled PSI out by name
-      and solved the same problem with attested hardware. OPRF-PSI is the academic route
-      to the same goal. Open-source: signalapp/ContactDiscoveryService-Icelake.</p>
+      <p>Signal documented an Intel SGX enclave plus ORAM design, not a PSI protocol.
+      Its design writeup ruled PSI out by name for that service. This is a historical
+      contrast, not a claim about Signal's current implementation.</p>
     </div>
     <div class="deployment-card">
-      <h4>Apple Password Monitoring (iOS 14+)</h4>
-      <p>Checks saved passwords against breach databases using a PSI variant.
-      Apple does not learn your passwords.</p>
+      <h4>Apple Password Monitoring</h4>
+      <p>Apple documents a cryptographic private-set-intersection protocol for checking
+      saved credentials against breached-password data without sending the user's
+      passwords to Apple.</p>
     </div>
     <div class="deployment-card">
       <h4>Google Password Checkup</h4>
-      <p>Checks passwords against 4+ billion leaked credentials.
-      Uses blind hashing + k-anonymity. Google does not learn your passwords.</p>
+      <p>Google documented private set intersection with blinding for checking a
+      credential against an encrypted corpus of more than four billion unsafe
+      credentials at launch.</p>
     </div>
     <div class="deployment-card">
       <h4>Google Private Join and Compute</h4>
-      <p>Ad conversion attribution across organizations. Two companies compute joint
-      conversion statistics without seeing each other's user databases.
-      Open-source: google/private-join-and-compute.</p>
+      <p>An open-source, honest-but-curious PSI variant that reveals intersection
+      cardinality and a sum of values attached to matching identifiers, rather than
+      the matching identifiers themselves. Repository: google/private-join-and-compute.</p>
     </div>
     <div class="deployment-card">
-      <h4>DP3T / Google-Apple Exposure Notification <em>(not PSI)</em></h4>
-      <p>COVID-19 contact tracing via Bluetooth proximity. Rolling proximity identifiers
-      are HKDF-derived from daily keys and re-derived locally on-device from downloaded
-      diagnosis keys — decentralized, but no two-party intersection protocol runs.</p>
+      <h4>DP3T / Google-Apple Exposure Notification <em>(retired; not PSI)</em></h4>
+      <p>The historical COVID-19 design derived rolling proximity identifiers from
+      temporary keys and matched downloaded diagnosis keys on-device; no two-party
+      intersection protocol ran. Apple says its Exposure Notification service has
+      been unavailable since September 18, 2023.</p>
     </div>
     <div class="deployment-card">
-      <h4>Healthcare — Cross-Hospital Billing Detection</h4>
-      <p>Hospitals combine patient record hashes to detect double-billing patterns.
-      Individual records never leave their originating institution.</p>
+      <h4>Meta Private Lift <em>(neighboring MPC)</em></h4>
+      <p>Meta published a private advertising-lift design combining private matching,
+      secure two-party aggregation, and distributed differential privacy. The public
+      FBPCS repository is now archived, so this is historical evidence, not a current
+      implementation recommendation.</p>
+    </div>
+    <div class="deployment-card">
+      <h4>Healthcare Record Matching <em>(use case)</em></h4>
+      <p>Cross-institution record matching is a common PSI application pattern. This
+      demo does not claim that a particular hospital or billing system deploys the
+      protocol implemented here.</p>
     </div>
   </div>
 
@@ -1845,7 +1858,9 @@ crypto-lab-ot-gate           — oblivious transfer (used in OPRF-PSI)</pre>
   <h3>Test Vectors (canonical)</h3>
   <p>
     Fixed inputs, fixed scalars (no shuffling, no fresh randomness). Any
-    conforming DH-PSI on ristretto255 must reproduce every hex string below.
+    implementation of this exact PSI-GATE-v1 profile must reproduce every hex
+    string below; generic DH-PSI on ristretto255 need not reproduce this
+    profile's custom domain separation or scalar encoding.
     NOTE: this mode disables shuffling and uses seeded scalars — it is a
     reference oracle, NOT a secure execution.
   </p>
@@ -1872,8 +1887,9 @@ crypto-lab-ot-gate           — oblivious transfer (used in OPRF-PSI)</pre>
   <p>
     Under DDH on ristretto255, the blinded values α·H(x) are computationally
     indistinguishable from uniform random group elements. We sample 5000 fresh
-    strings, multiply by a fresh α, then bin every output byte across 0–255
-    and compute a chi-square statistic against the uniform expectation.
+    strings and multiply by a fresh α. The χ² check bins byte positions 1–30;
+    byte 0 and byte 31 are graphed separately because RFC 9496's canonical
+    encoding constrains them, so a uniform group element is not 32 uniform bytes.
   </p>
   <button id="e6-ddh-run" type="button" class="btn primary">Sample 5000 × α·H(x)</button>
   <div id="e6-ddh-output" aria-live="polite" aria-atomic="true"></div>
@@ -1888,16 +1904,20 @@ crypto-lab-ot-gate           — oblivious transfer (used in OPRF-PSI)</pre>
   <div class="card-row">
     <div class="card">
       <div class="card-section-label">Simulator for corrupt Alice</div>
-      <p>Given α (Alice's private input), A, and the output (intersection I, |B|):</p>
+      <p>Given α (Alice's private randomness), A, and the output (intersection I, |B|):</p>
       <ol class="proof-list">
-        <li>For each element of I, compute Y* = αβ'·H(x) using a fresh β'.</li>
-        <li>For each remaining slot up to |A|, sample a uniform random ristretto point.</li>
-        <li>Sample |B| fresh random points and assign to Z* (shuffled).</li>
+        <li>Choose one fresh Z* point for each element of I and place those points among
+          |B| total independently sampled Z* values.</li>
+        <li>For a matching element's position in A, set Y* = α·Z* so Alice's real
+          byte-equality test produces exactly that match.</li>
+        <li>Fill every non-matching Y* slot with an independent random point,
+          conditioned on creating no extra match, then shuffle Z*.</li>
         <li>Output (Y*, Z*) as the simulated round-2 message.</li>
       </ol>
       <p class="proof-note">
-        Indistinguishable from a real run by DDH: αβ·H(x) for x ∉ A ∩ B
-        is pseudorandom to Alice, who only knows α.
+        The exact Y* = α·Z* correlation is preserved for I. Under DDH, the remaining
+        values are computationally indistinguishable from the unmatched values in a
+        real execution. This is proof intuition, not a complete reduction.
       </p>
     </div>
     <div class="card">
@@ -1952,12 +1972,12 @@ crypto-lab-ot-gate           — oblivious transfer (used in OPRF-PSI)</pre>
           <td>Simple, slow; baseline for understanding PSI</td>
         </tr>
         <tr>
-          <th scope="row">OPRF-PSI (JL10)</th>
+          <th scope="row">Basic OPRF-PSI <em>(inspired by JL10)</em></th>
           <td>2010</td>
           <td>O(n + m) group elts</td>
           <td>O(n + m) scalar muls</td>
-          <td>Semi-honest, one-more-DH</td>
-          <td>DH-PSI hardened with an OPRF; the basis of VOPRF-style deployments</td>
+          <td>Semi-honest (this demo)</td>
+          <td>Simplified exponentiation OPRF; inspired by JL10, but omits its malicious-security machinery</td>
         </tr>
         <tr>
           <th scope="row">KKRT16</th>

@@ -73,7 +73,8 @@ export function scalarFromSeed(hexSeed: string): Scalar {
 /**
  * Check whether the given 32 bytes decode to a valid ristretto255 point.
  * Returns false for non-canonical encodings, low-order points,
- * or otherwise-invalid inputs. Crucial for malicious-secure PSI.
+ * or otherwise-invalid inputs. This is defensive input handling; it does not
+ * make the surrounding PSI protocol malicious-secure.
  */
 export function isValidPoint(bytes: Uint8Array): boolean {
   if (bytes.length !== 32) return false;
@@ -106,6 +107,30 @@ export class InvalidPointError extends Error {
     );
     this.name = 'InvalidPointError';
     this.index = index;
+  }
+}
+
+/** Raised when a response cannot correspond one-for-one with its request. */
+export class InvalidBatchSizeError extends Error {
+  readonly expected: number;
+  readonly actual: number;
+
+  constructor(context: string, expected: number, actual: number) {
+    super(`${context}: expected ${expected} element(s), received ${actual}. Aborting.`);
+    this.name = 'InvalidBatchSizeError';
+    this.expected = expected;
+    this.actual = actual;
+  }
+}
+
+/** Require a response batch to preserve the request batch's cardinality. */
+export function assertBatchSize(
+  values: readonly unknown[],
+  expected: number,
+  context: string
+): void {
+  if (values.length !== expected) {
+    throw new InvalidBatchSizeError(context, expected, values.length);
   }
 }
 
@@ -154,7 +179,8 @@ export function hashToPoint(element: string): GroupPoint {
 export function scalarInverse(scalar: Scalar): Scalar {
   const n = bytesToBigint(scalar);
   if (n === 0n) throw new Error('scalarInverse: zero has no inverse');
-  // Use the field arithmetic from noble (constant-time path inside the lib).
+  // Use noble's field arithmetic helper. This browser demo makes no
+  // constant-time claim for JavaScript execution.
   const inv = ristretto255_hasher.Point.Fn.inv(n);
   return bigintToBytes(inv);
 }

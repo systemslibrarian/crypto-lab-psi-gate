@@ -16,7 +16,9 @@ import {
   scalarMul,
   pointToHex,
   assertValidPoints,
+  assertBatchSize,
 } from './group.js';
+import { uniqueElements } from './set-utils.js';
 
 /**
  * A complete protocol trace — every wire-visible value, in order.
@@ -107,8 +109,9 @@ function cryptoShuffle<T>(arr: T[]): T[] {
  * ALICE ROUND 1: blind each element X_i = α · H(a_i), shuffle before sending.
  */
 export function aliceRound1(aliceSet: string[]): AliceRound1 {
+  const uniqueAliceSet = uniqueElements(aliceSet);
   const aliceScalar = randomScalar();
-  const pairs = aliceSet.map((el) => ({
+  const pairs = uniqueAliceSet.map((el) => ({
     point: scalarMul(aliceScalar, hashToPoint(el)),
     element: el,
   }));
@@ -143,7 +146,7 @@ export function bobRound2(
     (X) => scalarMul(bobScalar, X)
   );
   const bobBlindedElements = cryptoShuffle(
-    bobSet.map((el) => scalarMul(bobScalar, hashToPoint(el)))
+    uniqueElements(bobSet).map((el) => scalarMul(bobScalar, hashToPoint(el)))
   );
   return { doubleBlindedAliceElements, bobBlindedElements, bobScalar };
 }
@@ -158,6 +161,14 @@ export function aliceRound3(
 ): PSIResult {
   const { aliceScalar, aliceOriginalMapping, blindedElements } = aliceRound1Output;
   const { doubleBlindedAliceElements, bobBlindedElements } = bobRound2Output;
+
+  // Bob must return exactly one Y_i for every X_i Alice sent. Point validation
+  // alone cannot detect a valid-but-truncated or valid-but-extended response.
+  assertBatchSize(
+    doubleBlindedAliceElements,
+    blindedElements.length,
+    'Alice received the Y_i batch from Bob'
+  );
 
   // Both batches arrived from Bob. Z_j feeds straight into scalarMul, and Y_i
   // is compared byte-for-byte against the result — a malicious Bob who could
@@ -203,8 +214,10 @@ export function tracePSI(
   aliceScalar: Scalar,
   bobScalar: Scalar
 ): PSITrace {
-  const hashedAlice = aliceSet.map((el) => hashToPoint(el));
-  const hashedBob = bobSet.map((el) => hashToPoint(el));
+  const uniqueAliceSet = uniqueElements(aliceSet);
+  const uniqueBobSet = uniqueElements(bobSet);
+  const hashedAlice = uniqueAliceSet.map((el) => hashToPoint(el));
+  const hashedBob = uniqueBobSet.map((el) => hashToPoint(el));
   const wireA2B_X = hashedAlice.map((H) => scalarMul(aliceScalar, H));
   const wireB2A_Y = wireA2B_X.map((X) => scalarMul(bobScalar, X));
   const wireB2A_Z = hashedBob.map((H) => scalarMul(bobScalar, H));
@@ -212,11 +225,11 @@ export function tracePSI(
   const wHexSet = new Set(computedW.map(pointToHex));
   const intersection: string[] = [];
   for (let i = 0; i < wireB2A_Y.length; i++) {
-    if (wHexSet.has(pointToHex(wireB2A_Y[i]!))) intersection.push(aliceSet[i]!);
+    if (wHexSet.has(pointToHex(wireB2A_Y[i]!))) intersection.push(uniqueAliceSet[i]!);
   }
   return {
-    aliceSet,
-    bobSet,
+    aliceSet: uniqueAliceSet,
+    bobSet: uniqueBobSet,
     aliceScalar,
     bobScalar,
     hashedAlice,
@@ -236,7 +249,7 @@ export function verifyCorrectness(
   psiResult: PSIResult
 ): { matches: boolean; expected: string[]; actual: string[] } {
   const bobSetS = new Set(bobSet);
-  const expected = aliceSet.filter((el) => bobSetS.has(el)).sort();
+  const expected = uniqueElements(aliceSet).filter((el) => bobSetS.has(el)).sort();
   const actual = [...psiResult.intersection].sort();
   const matches =
     expected.length === actual.length && expected.every((el, i) => el === actual[i]);

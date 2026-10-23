@@ -1,7 +1,7 @@
 name: Deploy to GitHub Pages
 
 # One workflow, one gate. Dependabot's auto-merge used to live in test.yml,
-# whose `test` (Node 20/22 matrix: typecheck, Vitest, build, npm audit) and
+# whose `test` matrix (typecheck, Vitest, build, npm audit) and
 # `a11y` jobs did not run the full Playwright suite (`test:a11y`) that
 # this file's build job runs before deploying -- while this file ran none of
 # test.yml's checks. A bump could clear one gate, merge itself, and then fail
@@ -37,7 +37,9 @@ jobs:
     timeout-minutes: 15
     strategy:
       matrix:
-        node-version: [20.x, 22.x]
+        # Vitest 5 requires Node 22.12+ or 24+. Do not keep a nominally green
+        # Node 20 leg that installs with EBADENGINE and is outside support.
+        node-version: [22.x, 24.x]
     steps:
       - uses: actions/checkout@v7
 

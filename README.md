@@ -201,7 +201,7 @@ For reviewers and implementers who need byte-level rigor:
 
 - **Vite + TypeScript strict** — `noUnusedLocals`, `noUnusedParameters`, full strict mode
 - **`@noble/curves`** — ristretto255 via `ristretto255_hasher` (RFC 9380 hash-to-curve, RFC 9496 ristretto encoding)
-- **Vitest + GitHub Actions** — golden test vectors, randomized property tests, CI on Node 20, 22, and 24
+- **Vitest + GitHub Actions** — golden test vectors, randomized property tests, CI on supported Node 22 and 24 releases
 - **Web Worker offload** — `src/psi-worker.ts` keeps the UI responsive during 1k+ PSI runs and DDH sampling
 - **CSP-hardened** — hash-pinned inline script, no remote sources, `worker-src 'self' blob:`
 - **No backends, no server** — GitHub Pages static deployment

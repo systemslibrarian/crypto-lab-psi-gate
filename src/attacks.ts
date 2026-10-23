@@ -19,6 +19,7 @@ import {
   oprfBobRound2,
   oprfAliceRound3,
 } from './oprf-psi.js';
+import { uniqueElements } from './set-utils.js';
 
 // ---------------------------------------------------------------------------
 // Attack 1 — Set Size Inflation
@@ -62,39 +63,43 @@ export function simulateSetSizeInflation(
 // ---------------------------------------------------------------------------
 
 /**
- * DICTIONARY ATTACK: Bob enumerates a small domain.
+ * DICTIONARY ATTACK: Alice, the output holder, enumerates a small domain.
  *
- * If Alice's set elements come from a small domain (e.g., 4-digit PINs,
- * short words, phone area codes), Bob can use the entire domain as his set B.
- * The PSI intersection reveals Alice's entire set.
+ * If Bob's set elements come from a small domain (e.g., 4-digit PINs,
+ * short words, phone area codes), malicious Alice can use the entire domain
+ * as her set A. The PSI intersection returned to Alice reveals Bob's elements.
  *
  * This is why PSI alone is insufficient for contact discovery in small domains.
- * Real deployments add: rate limiting, proof-of-work, or OPRF to prevent
- * offline enumeration.
+ * An online service needs authentication, strict batch/query limits, rate
+ * limiting, and abuse monitoring. A bare OPRF-PSI construction still lets its
+ * receiver query an enumerable domain.
  */
 export function simulateDictionaryAttack(
-  aliceSet: string[],
-  bobDictionary: string[]
+  aliceDictionary: string[],
+  bobSet: string[]
 ): {
-  aliceElementsLearned: string[];
+  bobElementsLearned: string[];
   coveragePercent: number;
   warningMessage: string;
 } {
-  const result = runPSI(aliceSet, bobDictionary);
-  const aliceElementsLearned = result.intersection;
+  const dictionary = uniqueElements(aliceDictionary);
+  const victimSet = uniqueElements(bobSet);
+  const result = runPSI(dictionary, victimSet);
+  const bobElementsLearned = result.intersection;
   const coveragePercent =
-    aliceSet.length > 0
-      ? Math.round((aliceElementsLearned.length / aliceSet.length) * 100)
+    victimSet.length > 0
+      ? Math.round((bobElementsLearned.length / victimSet.length) * 100)
       : 0;
 
   const warningMessage =
-    `Dictionary of ${bobDictionary.length} entries revealed ` +
-    `${aliceElementsLearned.length}/${aliceSet.length} ` +
-    `of Alice's elements (${coveragePercent}% of her set). ` +
+    `Alice's dictionary of ${dictionary.length} entries revealed ` +
+    `${bobElementsLearned.length}/${victimSet.length} ` +
+    `of Bob's elements (${coveragePercent}% of his set). ` +
     `This attack works because the element domain is small enough to enumerate. ` +
-    `Mitigation: rate limiting, proof-of-work, or OPRF-based PSI.`;
+    `Mitigation requires authenticated queries, strict batch and rate limits, ` +
+    `and abuse monitoring; bare OPRF-PSI does not stop enumeration.`;
 
-  return { aliceElementsLearned, coveragePercent, warningMessage };
+  return { bobElementsLearned, coveragePercent, warningMessage };
 }
 
 // ---------------------------------------------------------------------------

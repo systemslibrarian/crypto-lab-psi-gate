@@ -491,28 +491,28 @@ test('attack 1: the inflated size Alice sees is the real size plus the padding',
   );
 });
 
-test('attack 2: dictionary coverage is the fraction of the set it recovered', async ({ page }) => {
+test('attack 2: output-holder Alice learns the covered fraction of Bob\'s set', async ({ page }) => {
   await page.locator('#tab-4').click();
   await page.locator('#e4-a2-run').click();
   await expect(page.locator('#e4-a2-output .result-box')).toBeVisible();
 
   const pairs = await infoPairs(page, '#e4-a2-output');
-  const aliceSize = firstInt(pairs.get("Alice's set size:")!);
-  const dictSize = firstInt(pairs.get("Bob's dictionary size:")!);
-  const learned = splitList(pairs.get("Alice's elements learned by Bob:")!);
+  const dictSize = firstInt(pairs.get("Alice's dictionary size:")!);
+  const bobSize = firstInt(pairs.get("Bob's set size:")!);
+  const learned = splitList(pairs.get("Bob's elements learned by Alice:")!);
   const coverage = firstInt(pairs.get('Coverage:')!);
 
-  expect(learned.length).toBeLessThanOrEqual(aliceSize);
-  expect(coverage).toBe(Math.round((learned.length / aliceSize) * 100));
-  expect(dictSize).toBeGreaterThan(aliceSize);
+  expect(learned.length).toBeLessThanOrEqual(bobSize);
+  expect(coverage).toBe(Math.round((learned.length / bobSize) * 100));
+  expect(dictSize).toBeGreaterThan(bobSize);
   // A small domain really is fully enumerable — the point of the exhibit.
-  expect(learned).toHaveLength(aliceSize);
+  expect(learned).toHaveLength(bobSize);
   expect(coverage).toBe(100);
 
   // The prose repeats the same four numbers rather than a second story.
   const warning = await text(page, '#e4-a2-output .warning-box');
-  expect(allInts(warning).slice(0, 4)).toEqual([dictSize, learned.length, aliceSize, coverage]);
-  expect(warning).toContain('rate limiting, proof-of-work, or OPRF-based PSI');
+  expect(allInts(warning).slice(0, 4)).toEqual([dictSize, learned.length, bobSize, coverage]);
+  expect(warning).toContain('bare OPRF-PSI does not stop enumeration');
 });
 
 test('attack 3: reused α links exactly the elements that stayed put', async ({ page }) => {

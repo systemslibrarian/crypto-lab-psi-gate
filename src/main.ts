@@ -1193,7 +1193,7 @@ function initExhibit6(): void {
       </div>
       <div style="margin-top:0.75rem;display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center">
         <button id="e6-tv-copy" type="button" class="btn"
-          aria-label="Copy the test vector trace to the clipboard as JSON">Copy as JSON</button>
+          aria-label="Copy as JSON: the test vector trace, to the clipboard">Copy as JSON</button>
         <span id="e6-tv-copy-status" class="copy-status" role="status" aria-live="polite"></span>
       </div>`;
 

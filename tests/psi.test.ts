@@ -297,3 +297,36 @@ describe('OPRF-PSI correctness', () => {
     expect(r.bobLearnedAliceSize).toBe(1);
   });
 });
+
+describe('a duplicated input does not inflate what Bob publishes', () => {
+  /**
+   * `bobSetSize` is the figure this lab shows as what Bob's publication reveals
+   * about his set, so it has to be the number of DISTINCT tags rather than the
+   * length of whatever array he was handed. It was `bobSet.length`; changing it
+   * back left every test green, which is why this exists.
+   */
+  it('counts distinct tags, not input entries', () => {
+    const distinct = ['a@example.com', 'b@example.com', 'c@example.com'];
+    const withDuplicates = [...distinct, distinct[0]!, distinct[2]!, distinct[0]!];
+    expect(withDuplicates.length).toBe(6);
+
+    const setup = oprfBobSetup(withDuplicates);
+    expect(setup.publishedSet.size).toBe(distinct.length);
+    expect(setup.bobSetSize).toBe(distinct.length);
+    // The part that discriminates: the inflated count must not survive.
+    expect(setup.bobSetSize).not.toBe(withDuplicates.length);
+  });
+
+  it('agrees with the deduplicated input on a set that has no duplicates', () => {
+    const distinct = ['x@example.com', 'y@example.com'];
+    const setup = oprfBobSetup(distinct);
+    expect(setup.bobSetSize).toBe(distinct.length);
+  });
+
+  it('publishes one tag per distinct element, under one key', () => {
+    const key = oprfBobSetup(['seed@example.com']).bobKey;
+    const once = oprfBobSetup(['a@example.com', 'b@example.com'], key);
+    const twice = oprfBobSetup(['a@example.com', 'a@example.com', 'b@example.com'], key);
+    expect([...twice.publishedSet].sort()).toEqual([...once.publishedSet].sort());
+  });
+});

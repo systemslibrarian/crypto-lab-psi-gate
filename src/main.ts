@@ -1,4 +1,5 @@
 import './style.css';
+import { esc } from './escape';
 import {
   type PSITrace,
   runPSI,
@@ -27,12 +28,7 @@ import { uniqueElements } from './set-utils.js';
 // Utilities
 // ---------------------------------------------------------------------------
 
-function esc(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
+
 
 function truncateHex(h: string, n = 16): string {
   return h.slice(0, n) + '…';

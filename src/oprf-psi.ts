@@ -1,5 +1,10 @@
 /**
- * OPRF-PSI (Jarecki-Liu, SCN 2010).
+ * Basic exponentiation OPRF-PSI teaching construction.
+ *
+ * This follows the high-level publish-PRF-tags/query-an-OPRF pattern used in
+ * adaptive PSI work such as Jarecki-Liu (SCN 2010), but it deliberately omits
+ * that protocol's machinery for malicious security. It is not an
+ * implementation of the full JL10 protocol.
  *
  * NOT what Signal deploys: Signal's contact discovery (CDS/CDSI) runs on Intel SGX
  * enclaves with an ORAM lookup, and Signal's own writeup lists private set
@@ -17,14 +22,13 @@
  * Why this is a real improvement over plain DH-PSI:
  *   - Bob's set is published only as PRF outputs (one round per query, not
  *     per session), so the per-query cost is independent of |B|.
- *   - The protocol reduces to (one-more) gap-DH, the same assumption that
- *     underpins blind signatures and VOPRFs.
  *   - It composes cleanly with rate limiting and anonymous credentials.
  *
  * What stays the same as DH-PSI:
  *   - Still semi-honest secure only (this file).
  *   - Set sizes are still revealed (here: |A| in the query batch).
- *   - Dictionary attacks still apply if Alice's element domain is small.
+ *   - If Bob's elements come from a small domain, Alice can submit the whole
+ *     domain as her query. A bare OPRF does not stop that enumeration.
  */
 import { sha256 } from '@noble/hashes/sha2.js';
 import {
@@ -35,7 +39,9 @@ import {
   scalarMul,
   scalarInverse,
   assertValidPoints,
+  assertBatchSize,
 } from './group.js';
+import { uniqueElements } from './set-utils.js';
 
 export interface OPRFKeyMaterial {
   /** k — Bob's long-lived OPRF key. Single-source-of-truth secret. */
@@ -100,10 +106,10 @@ function prfTag(p: GroupPoint): string {
 export function oprfBobSetup(bobSet: string[], bobKey?: Scalar): OPRFKeyMaterial {
   const k = bobKey ?? randomScalar();
   const tags = new Set<string>();
-  for (const el of bobSet) {
+  for (const el of uniqueElements(bobSet)) {
     tags.add(prfTag(scalarMul(k, hashToPoint(el))));
   }
-  return { bobKey: k, publishedSet: tags, bobSetSize: bobSet.length };
+  return { bobKey: k, publishedSet: tags, bobSetSize: tags.size };
 }
 
 /**
@@ -111,7 +117,7 @@ export function oprfBobSetup(bobSet: string[], bobKey?: Scalar): OPRFKeyMaterial
  */
 export function oprfAliceRound1(aliceSet: string[]): OPRFAliceRound1 {
   const aliceScalar = randomScalar();
-  const blindedElements = aliceSet.map((el) =>
+  const blindedElements = uniqueElements(aliceSet).map((el) =>
     scalarMul(aliceScalar, hashToPoint(el))
   );
   return { aliceScalar, blindedElements };
@@ -143,20 +149,32 @@ export function oprfAliceRound3(
   round2: OPRFBobRound2,
   bobPublished: Set<string>
 ): OPRFResult {
+  const uniqueAliceSet = uniqueElements(aliceSet);
+  assertBatchSize(
+    round1.blindedElements,
+    uniqueAliceSet.length,
+    'Alice local OPRF query state'
+  );
+  assertBatchSize(
+    round2.evaluatedElements,
+    round1.blindedElements.length,
+    'Alice received the OPRF evaluation batch from Bob'
+  );
+
   // Bob's evaluation arrived over the wire; α⁻¹ is about to multiply it.
   assertValidPoints(round2.evaluatedElements, 'Alice received the OPRF evaluation from Bob');
 
   const alphaInv = scalarInverse(round1.aliceScalar);
   const intersection: string[] = [];
-  for (let i = 0; i < aliceSet.length; i++) {
+  for (let i = 0; i < uniqueAliceSet.length; i++) {
     const unblinded = scalarMul(alphaInv, round2.evaluatedElements[i]!);
-    if (bobPublished.has(prfTag(unblinded))) intersection.push(aliceSet[i]!);
+    if (bobPublished.has(prfTag(unblinded))) intersection.push(uniqueAliceSet[i]!);
   }
   return {
     intersection,
     intersectionSize: intersection.length,
     aliceLearnedBobSize: bobPublished.size,
-    bobLearnedAliceSize: aliceSet.length,
+    bobLearnedAliceSize: uniqueAliceSet.length,
   };
 }
 

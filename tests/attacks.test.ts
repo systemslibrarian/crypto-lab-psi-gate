@@ -20,13 +20,14 @@ describe('attack simulations', () => {
     expect(r.inflationDelta).toBe(10);
   });
 
-  it('dictionary attack reveals Alice elements covered by the dictionary', () => {
-    const A = ['1234', '5678', 'not-in-dict'];
+  it('dictionary attack lets output-holder Alice recover Bob values covered by her dictionary', () => {
+    const B = ['1234', '5678', 'not-in-dict'];
     const dict = Array.from({ length: 50 }, (_, i) => i.toString().padStart(4, '0'))
       .concat(['1234', '5678']);
-    const r = simulateDictionaryAttack(A, dict);
-    expect(r.aliceElementsLearned.sort()).toEqual(['1234', '5678']);
+    const r = simulateDictionaryAttack(dict, B);
+    expect(r.bobElementsLearned.sort()).toEqual(['1234', '5678']);
     expect(r.coveragePercent).toBe(Math.round((2 / 3) * 100));
+    expect(r.warningMessage).toContain('bare OPRF-PSI does not stop enumeration');
   });
 
   it('replay attack: linkedXCount equals stable elements when α is reused', () => {
@@ -69,7 +70,7 @@ describe('attack simulations', () => {
     // about the protocol: nothing may reach a scalar multiplication.
     const { probes, ristrettoVerdict } = simulateMalformedPointInjection();
     // Only the invalid-by-construction probes are assertable: the random-bytes
-    // one decodes to a real group element ~1 time in 16, and accepting a valid
+    // one decodes to a real group element about 1 time in 16, and accepting a valid
     // point is correct.
     const mustFail = probes.filter((p) => p.mustBeRejected);
     expect(mustFail).toHaveLength(3);
@@ -89,7 +90,7 @@ describe('attack simulations', () => {
     expect(probes).toHaveLength(4);
     // The three structured probes are deterministic — they must always fail
     // ristretto decoding. The "random 32 bytes" probe is probabilistic
-    // (~4% of random strings happen to be valid ristretto encodings),
+    // (~6.25% of random strings happen to be valid ristretto encodings),
     // so we assert behaviour on the deterministic ones only.
     const byLabel = Object.fromEntries(probes.map((p) => [p.label, p]));
     expect(byLabel['Identity element O (all-zero encoding)']!.accepted).toBe(false);

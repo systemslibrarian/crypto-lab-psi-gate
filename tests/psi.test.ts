@@ -9,6 +9,7 @@ import {
 } from '../src/oprf-psi.js';
 import {
   InvalidPointError,
+  InvalidBatchSizeError,
   hashToPoint,
   randomScalar,
   scalarFromSeed,
@@ -55,6 +56,13 @@ describe('DH-PSI correctness', () => {
     expect(r.intersection.sort()).toEqual([...items].sort());
   });
 
+  it('treats duplicate array entries as one set element', () => {
+    const r = runPSI(['x', 'x', 'y'], ['x', 'x']);
+    expect(r.intersection).toEqual(['x']);
+    expect(r.bobLearnedAliceSize).toBe(2);
+    expect(r.aliceLearnedBobSize).toBe(1);
+  });
+
   it('property test: random A, B (≤30 each) — PSI === plaintext intersection', () => {
     for (let trial = 0; trial < 25; trial++) {
       const n = 1 + Math.floor(Math.random() * 30);
@@ -72,7 +80,8 @@ describe('DH-PSI correctness', () => {
 });
 
 describe('tracePSI canonical test vector', () => {
-  // Locked test vector. Any conforming implementation must reproduce this.
+  // Locked test vector. Any implementation claiming PSI-GATE-v1 profile
+  // compatibility must reproduce this; generic DH-PSI implementations need not.
   // If this expectation ever changes, the published test vector has changed
   // and downstream implementers depending on it must be notified.
   const A = ['alice@example.com', 'bob@example.com', 'mom@example.com'];
@@ -168,6 +177,33 @@ describe('received-point validation on the protocol path', () => {
     expect(() => aliceRound3(r1, badZ, A)).toThrow(InvalidPointError);
   });
 
+  it('aliceRound3 rejects truncated or extended Y_i batches', () => {
+    const A = ['alice', 'bob'];
+    const r1 = aliceRound1(A);
+    const r2 = bobRound2(r1, ['bob']);
+
+    expect(() =>
+      aliceRound3(
+        r1,
+        { ...r2, doubleBlindedAliceElements: r2.doubleBlindedAliceElements.slice(0, 1) },
+        A
+      )
+    ).toThrow(InvalidBatchSizeError);
+    expect(() =>
+      aliceRound3(
+        r1,
+        {
+          ...r2,
+          doubleBlindedAliceElements: [
+            ...r2.doubleBlindedAliceElements,
+            r2.doubleBlindedAliceElements[0]!,
+          ],
+        },
+        A
+      )
+    ).toThrow(InvalidBatchSizeError);
+  });
+
   it('the OPRF server refuses to evaluate an invalid query', () => {
     const bob = oprfBobSetup(['b']);
     expect(() => oprfBobRound2({ aliceScalar: randomScalar(), blindedElements: [IDENTITY] }, bob.bobKey))
@@ -181,6 +217,35 @@ describe('received-point validation on the protocol path', () => {
     expect(() =>
       oprfAliceRound3(A, q, { evaluatedElements: [IDENTITY] }, bob.publishedSet)
     ).toThrow(InvalidPointError);
+  });
+
+  it('the OPRF client rejects truncated or extended evaluation batches', () => {
+    const A = ['a', 'b'];
+    const bob = oprfBobSetup(['a']);
+    const q = oprfAliceRound1(A);
+    const evaluation = oprfBobRound2(q, bob.bobKey);
+
+    expect(() =>
+      oprfAliceRound3(
+        A,
+        q,
+        { evaluatedElements: evaluation.evaluatedElements.slice(0, 1) },
+        bob.publishedSet
+      )
+    ).toThrow(InvalidBatchSizeError);
+    expect(() =>
+      oprfAliceRound3(
+        A,
+        q,
+        {
+          evaluatedElements: [
+            ...evaluation.evaluatedElements,
+            evaluation.evaluatedElements[0]!,
+          ],
+        },
+        bob.publishedSet
+      )
+    ).toThrow(InvalidBatchSizeError);
   });
 
   it('validation does not reject honest traffic — full runs still succeed', () => {
@@ -217,11 +282,51 @@ describe('OPRF-PSI correctness', () => {
     }
   });
 
+  it('treats duplicate array entries as one set element', () => {
+    const r = runOPRFPSI(['x', 'x', 'y'], ['x', 'x']);
+    expect(r.intersection).toEqual(['x']);
+    expect(r.bobLearnedAliceSize).toBe(2);
+    expect(r.aliceLearnedBobSize).toBe(1);
+  });
+
   it('reveals only the PRF tag set size to Alice (not raw B)', () => {
     const A = ['x'];
     const B = ['a', 'b', 'c', 'd'];
     const r = runOPRFPSI(A, B);
     expect(r.aliceLearnedBobSize).toBe(4);
     expect(r.bobLearnedAliceSize).toBe(1);
+  });
+});
+
+describe('a duplicated input does not inflate what Bob publishes', () => {
+  /**
+   * `bobSetSize` is the figure this lab shows as what Bob's publication reveals
+   * about his set, so it has to be the number of DISTINCT tags rather than the
+   * length of whatever array he was handed. It was `bobSet.length`; changing it
+   * back left every test green, which is why this exists.
+   */
+  it('counts distinct tags, not input entries', () => {
+    const distinct = ['a@example.com', 'b@example.com', 'c@example.com'];
+    const withDuplicates = [...distinct, distinct[0]!, distinct[2]!, distinct[0]!];
+    expect(withDuplicates.length).toBe(6);
+
+    const setup = oprfBobSetup(withDuplicates);
+    expect(setup.publishedSet.size).toBe(distinct.length);
+    expect(setup.bobSetSize).toBe(distinct.length);
+    // The part that discriminates: the inflated count must not survive.
+    expect(setup.bobSetSize).not.toBe(withDuplicates.length);
+  });
+
+  it('agrees with the deduplicated input on a set that has no duplicates', () => {
+    const distinct = ['x@example.com', 'y@example.com'];
+    const setup = oprfBobSetup(distinct);
+    expect(setup.bobSetSize).toBe(distinct.length);
+  });
+
+  it('publishes one tag per distinct element, under one key', () => {
+    const key = oprfBobSetup(['seed@example.com']).bobKey;
+    const once = oprfBobSetup(['a@example.com', 'b@example.com'], key);
+    const twice = oprfBobSetup(['a@example.com', 'a@example.com', 'b@example.com'], key);
+    expect([...twice.publishedSet].sort()).toEqual([...once.publishedSet].sort());
   });
 });

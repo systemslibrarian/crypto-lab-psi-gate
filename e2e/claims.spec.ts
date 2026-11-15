@@ -489,6 +489,16 @@ test('attack 1: the inflated size Alice sees is the real size plus the padding',
   await expect(page.locator('#e4-a1-output .warning-box')).toContainText(
     'Bob can claim any size without Alice knowing',
   );
+  // Size hiding is its own protocol line (size-hiding PSI, ePrint 2010/220).
+  // PaXoS (ePrint 2020/193, malicious security at semi-honest speed) and CM20
+  // (ePrint 2020/729, computation/communication balance) offer no size hiding,
+  // so the box must not name them as the cure.
+  await expect(page.locator('#e4-a1-output .warning-box')).toContainText(
+    'size-hiding PSI, ePrint 2010/220',
+  );
+  await expect(page.locator('#e4-a1-output .warning-box')).toContainText(
+    'PaXoS and CM20 are faster and malicious-secure PSI, not size-hiding',
+  );
 });
 
 test('attack 2: output-holder Alice learns the covered fraction of Bob\'s set', async ({ page }) => {

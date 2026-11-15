@@ -39,7 +39,13 @@ The page runs the full three-round DH-PSI protocol in the browser across six exh
 ## What Can Go Wrong
 
 - **Set sizes are revealed.** Both parties learn how many elements the other has.
-  Hiding set sizes requires more sophisticated protocols (PaXoS, CM20).
+  Hiding a set size takes a protocol built for that: size-hiding PSI keeps the
+  client's set size secret (Ateniese, De Cristofaro and Tsudik,
+  [ePrint 2010/220](https://eprint.iacr.org/2010/220)). The faster protocols named
+  below are not that — [PaXoS](https://eprint.iacr.org/2020/193) buys security
+  against malicious participants at close to semi-honest speed, and
+  [CM20](https://eprint.iacr.org/2020/729) buys a better
+  computation/communication balance; neither hides how large a set is.
 
 - **Dictionary attacks work against small domains.** Alice receives the intersection
   in this construction, so malicious Alice can place an enumerable domain (phone

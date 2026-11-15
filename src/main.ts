@@ -818,8 +818,10 @@ function initExhibit4(): void {
           <span class="info-value match">${result.intersection.join(', ') || '∅'}</span>
         </div>
         <div class="warning-box">
-          Bob can claim any size without Alice knowing. Set size hiding requires
-          padding, polynomial commitment, or size-preserving protocols (PaXoS, CM20).
+          Bob can claim any size without Alice knowing. Hiding the real size takes
+          padding to a public upper bound, or a protocol built for it (size-hiding
+          PSI, ePrint 2010/220); PaXoS and CM20 are faster and malicious-secure
+          PSI, not size-hiding.
         </div>
       </div>`;
   });

@@ -490,14 +490,20 @@ test('attack 1: the inflated size Alice sees is the real size plus the padding',
     'Bob can claim any size without Alice knowing',
   );
   // Size hiding is its own protocol line (size-hiding PSI, ePrint 2010/220).
-  // PaXoS (ePrint 2020/193, malicious security at semi-honest speed) and CM20
-  // (ePrint 2020/729, computation/communication balance) offer no size hiding,
-  // so the box must not name them as the cure.
+  // PaXoS (ePrint 2020/193) is "security against malicious participants, yet
+  // ... almost as fast as the fastest known semi-honest PSI protocol"; CM20
+  // (ePrint 2020/729) is "semi-honest security in the plain model and one-sided
+  // malicious security in the random oracle model", and the comparison table
+  // below lists it as semi-honest. Neither hides set sizes, so the box must
+  // keep the two security models apart and must not name either as the cure.
   await expect(page.locator('#e4-a1-output .warning-box')).toContainText(
     'size-hiding PSI, ePrint 2010/220',
   );
   await expect(page.locator('#e4-a1-output .warning-box')).toContainText(
-    'PaXoS and CM20 are faster and malicious-secure PSI, not size-hiding',
+    'PaXoS is malicious-secure and CM20 is a fast semi-honest protocol',
+  );
+  await expect(page.locator('#e4-a1-output .warning-box')).toContainText(
+    'neither hides set sizes',
   );
 });
 

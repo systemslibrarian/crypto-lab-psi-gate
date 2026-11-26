@@ -15,7 +15,11 @@ so CI catches accidental drift. Changing any value is a protocol version bump.
 | Hash-to-curve | RFC 9380 expand_message_xmd over SHA-512 |
 | Hash-to-curve DST | `PSI-GATE-v1-RISTRETTO255_XMD:SHA-512_R_` |
 | OPRF H₂ | SHA-256 over (`PSI-GATE-v1-OPRF-H2` ‖ pointBytes) |
-| Encoding | All hex is lowercase, big-endian, 32 bytes (64 chars) unless noted |
+| Scalars α, β, k | PSI Gate writes these integers in 32-byte big-endian form. |
+| Group points | RFC 9496 §4.3.2 defines the canonical 32-byte ristretto255 encoding in little-endian order. Hex displays the bytes in wire order. |
+| OPRF tags | SHA-256 digest bytes in output order. |
+
+All hex strings use lowercase digits. To reproduce the trace, pass the point and digest bytes to your library in the order shown. If its scalar API expects little-endian bytes, encode the scalar integer in that order before calling it.
 
 ## Inputs (fixed)
 
